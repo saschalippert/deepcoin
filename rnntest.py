@@ -1,14 +1,30 @@
-import json
-from datetime import timedelta, datetime
-from collections import OrderedDict, deque
 import torch
 from torch import nn
 import numpy as np
 import matplotlib.pyplot as plt
-import torch.utils.data as utils
+from collections import OrderedDict, deque
 
-start_date = datetime(2016, 1, 2)
-end_date = datetime(2019, 6, 24)
+plt.figure(figsize=(8,5))
+
+# how many time steps/data pts are in one batch of data
+seq_length = 20
+
+# generate evenly spaced data pts
+#time_steps = np.linspace(0, np.pi * 2, seq_length + 1)
+#data = np.sin(time_steps)
+
+time_steps = np.arange(0, 10, 0.01)
+data = np.sin(time_steps)
+
+x = data[:-1] # all but the last piece of data
+y = data[1:] # all but the first
+
+# display the data
+plt.plot(time_steps[1:], x, 'r.', label='input, x') # x
+plt.plot(time_steps[1:], y, 'b.', label='target, y') # y
+
+plt.legend(loc='best')
+plt.show()
 
 
 class RNN(nn.Module):
@@ -16,7 +32,6 @@ class RNN(nn.Module):
         super(RNN, self).__init__()
 
         self.hidden_dim = hidden_dim
-        self.output_size = output_size
         self.n_layers = n_layers
 
         # define an RNN with specified parameters
@@ -25,6 +40,7 @@ class RNN(nn.Module):
 
         # last, fully-connected layer
         self.fc = nn.Linear(hidden_dim, output_size)
+        self.output_size = output_size
 
     def forward(self, x, hidden):
         # x (batch_size, seq_length, input_size)
@@ -35,73 +51,27 @@ class RNN(nn.Module):
         # get RNN outputs
         r_out, hidden = self.rnn(x, hidden)
         # shape output to be (batch_size*seq_length, hidden_dim)
-        r_out = r_out.contiguous().view(-1, self.hidden_dim)
+        r_out = r_out[:,-1,:] #only last sequence is evaluated
 
         # get final output
-        out = self.fc(r_out)
+        output = self.fc(r_out)
 
-        out = out.view(batch_size, -1, self.output_size)
-        out = out[:, -1]
-
-        return out, hidden
+        return output, hidden
 
     def init_hidden(self, batch_size):
-        '''
-        Initialize the hidden state of an LSTM/GRU
-        :param batch_size: The batch_size of the hidden state
-        :return: hidden state of dims (n_layers, batch_size, hidden_dim)
-        '''
+        return torch.zeros(self.n_layers, batch_size, self.hidden_dim)
 
-        hidden = torch.zeros(self.n_layers, batch_size, self.hidden_dim)
-
-        return hidden
-
-def date_range(start: datetime, end: datetime, step: timedelta):
-    date_list = []
-
-    while start < end:
-        date_list.append(start)
-        start += step
-
-    return date_list
-
-candles = OrderedDict()
-
-for chunk_date in date_range(start_date, end_date, timedelta(days=1)):
-    filename = chunk_date.strftime('btceur/btceur_%Y_%m_%d.json')
-
-    with open(filename) as json_file:
-        data = json.load(json_file)
-        candles.update(data)
-
-data = np.zeros((len(candles)))
-
-for index, key in enumerate(candles):
-
-    candle = candles[key]
-
-    time = candle["time"]
-    low = candle["low"]
-    high = candle["high"]
-    open = candle["open"]
-    close = candle["close"]
-    volume = candle["volume"]
-
-    data[index] = close
-
-seq_length = 20
+# decide on hyperparameters
 input_size=1
 output_size=1
 hidden_dim=32
 n_layers=1
 
-time = np.arange(0, 10, 0.01);
-data   = np.sin(time)
-
 # instantiate an RNN
 rnn = RNN(input_size, output_size, hidden_dim, n_layers)
 print(rnn)
 
+# MSE loss and Adam optimizer with a learning rate of 0.01
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(rnn.parameters(), lr=0.001)
 
@@ -135,44 +105,29 @@ def batch_data(words, sequence_length, batch_size):
     # return a dataloader
     return dataloader
 
-# there is no test for this function, but you are encouraged to create
-# print statements and tests of your own
 batch_size = 32
 train_loader = batch_data(data, seq_length, batch_size)
 data_iter = iter(train_loader)
-sample_x, sample_y = data_iter.next()
 
-print(sample_x.shape)
-print(sample_x)
-print()
-print(sample_y.shape)
-
-def train(rnn, n_epochs, print_every):
+# train the RNN
+def train(rnn, n_steps, print_every):
     # initialize the hidden state
-    batch_losses = []
 
-    rnn.train()
 
-    print("Training for %d epoch(s)..." % n_epochs)
-    for epoch_i in range(1, n_epochs + 1):
-        hidden = rnn.init_hidden(batch_size)
-
+    for epoch_i in range(1, n_steps + 1):
 
         for batch_i, (inputs, labels) in enumerate(train_loader, 1):
-            # outputs from the rnn
-
-            # make sure you iterate over completely full batches, only
+            hidden = rnn.init_hidden(batch_size)
             n_batches = len(train_loader.dataset) // batch_size
 
             if (batch_i > n_batches):
                 break
 
-            inputs = inputs.reshape((batch_size, seq_length, 1)) # input_size=1
+            inputs = inputs.reshape((batch_size, seq_length, 1))  # input_size=1
             labels = labels.reshape((batch_size, 1))
 
+            # outputs from the rnn
             prediction, hidden = rnn(inputs, hidden)
-
-            hidden = hidden.data
 
             ## Representing Memory ##
             # make a new variable for hidden and detach the hidden state from its history
@@ -187,26 +142,32 @@ def train(rnn, n_epochs, print_every):
             loss.backward()
             optimizer.step()
 
-            batch_losses.append(loss.data.numpy())
-
-            # printing loss stats
+            # display loss and predictions
             if batch_i % print_every == 0:
-                print('Epoch: {:>4}/{:<4}  Loss: {}'.format(epoch_i, n_epochs, np.average(batch_losses)))
-                batch_losses = []
+                print('Loss: ', loss.item())
+                #plt.plot(time_steps[1:], x, 'r.')  # input
+                #plt.plot(time_steps[1:], prediction.data.numpy().flatten(), 'b.')  # predictions
+                #plt.show()
 
     return rnn
 
+# train the rnn and monitor results
+n_steps = 10
+print_every = 15
 
-def generate(rnn, current_seq, predict_len=800):
+trained_rnn = train(rnn, n_steps, print_every)
+
+
+def generate(rnn, current_seq, predict_len=1000):
     rnn.eval()
 
     hidden = rnn.init_hidden(1)
 
-    gen_seq = deque([d.data.numpy() for d in current_seq], maxlen = seq_length)
+    gen_seq = deque(current_seq, maxlen = seq_length)
     gen_out = deque(maxlen = predict_len)
 
     for i in range(predict_len):
-        gen_seq_torch = torch.from_numpy(np.array(gen_seq))
+        gen_seq_torch = torch.from_numpy(np.array(gen_seq, dtype=np.float32))
         inputs = gen_seq_torch.reshape((1, seq_length, 1))
 
         output, hidden = rnn(inputs, hidden)
@@ -220,14 +181,12 @@ def generate(rnn, current_seq, predict_len=800):
 
     return gen_out
 
-
 n_steps = 100
 print_every = 5
 
 trained_rnn = train(rnn, n_steps, print_every)
 
-generated = generate(trained_rnn, sample_x[0])
+generated = generate(trained_rnn, data[0:20])
 
-
-plt.plot(time, data, time[21:21 + 800], generated)
+plt.plot(time_steps, data, time_steps, generated)
 plt.show()
