@@ -5,30 +5,33 @@ import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import TensorDataset, DataLoader
 import math
+from torch.nn.utils import clip_grad_norm_
 
-np.set_printoptions(precision=10)
 np.random.seed(0)
 torch.manual_seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class RNN(nn.Module):
-    def __init__(self, input_size, output_size, hidden_size, n_layers):
+    def __init__(self, input_size, output_size, hidden_size, n_layers, drop_prob):
         super(RNN, self).__init__()
 
         self.hidden_size = hidden_size
         self.output_size = output_size
         self.n_layers = n_layers
 
-        self.rnn = nn.LSTM(input_size, hidden_size, num_layers = n_layers, batch_first=True)
+        self.net = nn.LSTM(input_size, hidden_size, num_layers = n_layers, dropout=drop_prob, batch_first=True)
 
         self.fc = nn.Linear(hidden_size, output_size)
 
-    def forward(self, input, hidden):
+    def forward(self, input):
         # x (batch_size, seq_length, input_size)
         # hidden (n_layers, batch_size, hidden_dim)
         # r_out (batch_size, time_step, hidden_size)
-        out, hidden = self.rnn(input, hidden)
+
+        hidden = rnn.init_hidden(batch_size)
+
+        out, hidden = self.net(input, hidden)
 
         out = out[:,-1,:] #only last sequence is evaluated
 
@@ -37,11 +40,14 @@ class RNN(nn.Module):
         return out, hidden
 
     def init_hidden(self, batch_size):
-        #return torch.zeros(self.n_layers, batch_size, self.hidden_size)
-        return (torch.zeros(self.n_layers, batch_size, self.hidden_size).to(device),
-                torch.zeros(self.n_layers, batch_size, self.hidden_size).to(device))
+        # return torch.zeros(self.n_layers, batch_size, self.hidden_size)
 
-        #return torch.zeros(self.n_layers, batch_size, self.hidden_size)
+        weight = next(self.parameters()).data
+
+        return (weight.new(self.n_layers, batch_size, self.hidden_size).zero_().to(device),
+                weight.new(self.n_layers, batch_size, self.hidden_size).zero_().to(device))
+
+        # return torch.zeros(self.n_layers, batch_size, self.hidden_size)
 
 seq_length = 64
 input_size = 1
@@ -49,12 +55,13 @@ output_size = 1
 hidden_dim = 128
 n_layers = 2
 batch_size = 512
-n_epoches = 75
+n_epoches = 1000
+drop_prob = 0.5
 
 time = np.arange(0.001, 100, 0.01);
 data  = np.sin(time)
 
-rnn = RNN(input_size, output_size, hidden_dim, n_layers).to(device)
+rnn = RNN(input_size, output_size, hidden_dim, n_layers, drop_prob).to(device)
 print(rnn)
 
 criterion = nn.MSELoss()
@@ -89,6 +96,9 @@ dataloader_train, dataloader_test = batch_data(data, seq_length, batch_size)
 def train(rnn, n_epochs):
     rnn.train()
 
+    best_loss = float("inf")
+    best_model = None
+
     print("Training for %d epoch(s)..." % n_epochs)
     for epoch_i in range(1, n_epochs + 1):
         epoch_losses = []
@@ -96,19 +106,30 @@ def train(rnn, n_epochs):
         #gen_out = deque(maxlen=len(dataloader_train) * batch_size)
 
         for batch_i, (inputs, targets) in enumerate(dataloader_train):
-            hidden = rnn.init_hidden(batch_size)
-
             inputs = inputs.reshape((batch_size, seq_length, 1)).to(device)
             targets = targets.reshape((batch_size, 1)).to(device)
 
-            prediction, hidden = rnn(inputs, hidden)
+            optimizer.zero_grad()
+
+            prediction, hidden = rnn(inputs)
 
             loss = criterion(prediction, targets)
-            optimizer.zero_grad()
+
             loss.backward()
+
+            clip_grad_norm_(rnn.parameters(), 5)
+
             optimizer.step()
 
-            epoch_losses.append(loss.detach().cpu().numpy())
+            np_loss = loss.detach().cpu().numpy()
+
+            epoch_losses.append(np_loss)
+
+            if(np_loss < best_loss):
+                best_loss = np_loss
+                best_model = RNN(input_size, output_size, hidden_dim, n_layers, drop_prob).to(device)
+                best_model.load_state_dict(rnn.state_dict())
+
 
             #np_out = prediction.detach().numpy().flatten()
 
@@ -118,12 +139,12 @@ def train(rnn, n_epochs):
         #plt.plot(gen_out)
         #plt.show()
 
-        print('Epoch: {:>4}/{:<4}  Loss: {}'.format(epoch_i, n_epochs, np.average(epoch_losses)))
+        print('Epoch: {:>4}/{:<4} Loss: {:.10f} AvgLoss: {:.10f} BstLoss: {:.10f}'.format(epoch_i, n_epochs, np_loss, np.average(epoch_losses), best_loss))
 
-    return rnn
+    return best_model
 
 
-trained_rnn = train(rnn, n_epoches)
+rnn = train(rnn, n_epoches)
 
 def generate2(rnn, current_seq, predict_len=10000):
     rnn.eval()
@@ -132,15 +153,12 @@ def generate2(rnn, current_seq, predict_len=10000):
     gen_out = np.zeros((predict_len), dtype=np.float32)
 
     for i in range(predict_len):
-        hidden = rnn.init_hidden(1)
-
         gen_seq_torch = torch.from_numpy(gen_seq)
         inputs = gen_seq_torch.reshape((1, seq_length, 1)).to(device)
 
-        output, hidden = rnn(inputs, hidden)
+        output, hidden = rnn(inputs)
 
         np_out = output.detach().cpu().numpy()
-        #print(np_out)
 
         gen_out[i] = np_out
 
@@ -149,7 +167,7 @@ def generate2(rnn, current_seq, predict_len=10000):
 
     return gen_out
 
-generated = generate2(trained_rnn, data[0:seq_length])
+generated = generate2(rnn, data[0:seq_length])
 
 range_gen = range(0, len(generated))
 plt.plot(range_gen, generated, range_gen, generated, data[0:len(generated)])
@@ -158,15 +176,13 @@ plt.show()
 gen_out = np.zeros((len(dataloader_train) * batch_size), dtype=np.float32)
 
 rnn.eval()
-for batch_i, (inputs, targets) in enumerate(dataloader_train):
-    hidden = rnn.init_hidden(batch_size)
 
+for batch_i, (inputs, targets) in enumerate(dataloader_train):
     inputs = inputs.reshape((batch_size, seq_length, 1)).to(device)
 
-    prediction, hidden = rnn(inputs, hidden)
+    prediction, hidden = rnn(inputs)
 
     np_out = prediction.detach().cpu().numpy().flatten()
-    #print(np_out)
 
     start = batch_i * batch_size
     end = start + batch_size
