@@ -14,6 +14,7 @@ torch.manual_seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 class Model(nn.Module):
     def __init__(self, input_size, output_size, hidden_size, n_layers, drop_prob):
         super(Model, self).__init__()
@@ -22,7 +23,7 @@ class Model(nn.Module):
         self.output_size = output_size
         self.n_layers = n_layers
 
-        self.net = nn.LSTM(input_size, hidden_size, num_layers = n_layers, dropout=drop_prob, batch_first=True)
+        self.net = nn.LSTM(input_size, hidden_size, num_layers=n_layers, dropout=drop_prob, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, input):
@@ -34,7 +35,7 @@ class Model(nn.Module):
 
         hidden = model.init_hidden(batch_size)
         out, _ = self.net(input, hidden)
-        out = out[:,-1,:] #only last sequence is evaluated
+        out = out[:, -1, :]  # only last sequence is evaluated
         out = self.fc(out)
 
         return out
@@ -45,6 +46,7 @@ class Model(nn.Module):
         return (weight.new(self.n_layers, batch_size, self.hidden_size).zero_().to(device),
                 weight.new(self.n_layers, batch_size, self.hidden_size).zero_().to(device))
 
+
 seq_length = 64
 input_size = 1
 output_size = 1
@@ -54,10 +56,11 @@ batch_size = 512
 n_epoches = 1000
 drop_prob = 0.5
 
-time = np.arange(0.001, 100, 0.01);
-data  = np.sin(time)
+time = np.arange(0.001, 100, 0.01)
+data = np.sin(time)
 
-def create_dataloader(data, sequence_length, batch_size, train_percentage = 0.75, shuffle_indices = True):
+
+def create_dataloader(data, sequence_length, batch_size, train_percentage=0.75, shuffle_indices=True):
     window_len = sequence_length + 1
     sequences = len(data) - window_len
 
@@ -81,14 +84,17 @@ def create_dataloader(data, sequence_length, batch_size, train_percentage = 0.75
     indices_validation = indices[i_train:]
 
     dataset_train = TensorDataset(torch.from_numpy(inputs[indices_train]), torch.from_numpy(targets[indices_train]))
-    dataset_validation = TensorDataset(torch.from_numpy(inputs[indices_validation]), torch.from_numpy(targets[indices_validation]))
+    dataset_validation = TensorDataset(torch.from_numpy(inputs[indices_validation]),
+                                       torch.from_numpy(targets[indices_validation]))
 
     dataloader_train = DataLoader(dataset_train, shuffle=False, batch_size=batch_size, drop_last=True)
     dataloader_validation = DataLoader(dataset_validation, shuffle=False, batch_size=batch_size, drop_last=True)
 
     return dataloader_train, dataloader_validation
 
+
 dataloader_train, dataloader_validation = create_dataloader(data, seq_length, batch_size)
+
 
 def test_model(model, criterion, data, seq_length):
     model.eval()
@@ -123,6 +129,7 @@ def test_model(model, criterion, data, seq_length):
     loss_sum /= predict_len
 
     return gen_out, loss_sum
+
 
 def train_model(model, optimizer, criterion, n_epochs):
     best_loss = float("inf")
@@ -181,12 +188,15 @@ def train_model(model, optimizer, criterion, n_epochs):
 
         validation_losses.append(validation_loss)
 
-        if(validation_loss < best_loss):
+        if (validation_loss < best_loss):
             best_loss = validation_loss
             best_model = Model(input_size, output_size, hidden_dim, n_layers, drop_prob).to(device)
             best_model.load_state_dict(model.state_dict())
 
-        print('Epoch: {:>4}/{:<4} Loss: {:.10f} AvgLoss: {:.10f} Valoss: {:.10f} AvgValoss: {:.10f} BstValLoss: {:.10f}'.format(epoch_i, n_epochs, epoch_loss, np.average(epoch_losses), validation_loss, np.average(validation_losses), best_loss))
+        print(
+            'Epoch: {:>4}/{:<4} Loss: {:.10f} AvgLoss: {:.10f} Valoss: {:.10f} AvgValoss: {:.10f} BstValLoss: {:.10f}'.format(
+                epoch_i, n_epochs, epoch_loss, np.average(epoch_losses), validation_loss, np.average(validation_losses),
+                best_loss))
 
     linecolor = np.array([
         [255, 0, 0],

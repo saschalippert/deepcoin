@@ -4,6 +4,7 @@ from datetime import timedelta, datetime
 from time import sleep
 import json
 
+
 def load_candles(start, end, granularity):
     url = 'https://api.pro.coinbase.com/products/BTC-USD/candles?start=' + start + '&end=' + end + '&granularity=' + granularity
 
@@ -26,6 +27,7 @@ def load_candles(start, end, granularity):
 
     return candles
 
+
 def date_range(start: datetime, end: datetime, step: timedelta):
     date_list = []
 
@@ -34,6 +36,7 @@ def date_range(start: datetime, end: datetime, step: timedelta):
         start += step
 
     return date_list
+
 
 start_date = datetime(2016, 1, 1)
 end_date = datetime(2019, 6, 25)
@@ -49,11 +52,11 @@ for chunk_start_date, chunk_end_date in date_range(start_date, end_date, timedel
 
     candles_write = dict()
 
-    if(candles_date != chunk_end_date.date()):
+    if (candles_date != chunk_end_date.date()):
         for ts_key in candles_loaded.copy().keys():
             candle_time = datetime.utcfromtimestamp(ts_key)
 
-            if(candle_time.date() == candles_date):
+            if (candle_time.date() == candles_date):
                 candles_write[ts_key] = candles_loaded[ts_key]
                 del candles_loaded[ts_key]
 

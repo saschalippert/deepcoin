@@ -5,10 +5,8 @@ import torch
 from torch import nn
 import numpy as np
 import matplotlib.pyplot as plt
-import torch.utils.data as utils
 
-start_date = datetime(2016, 1, 2)
-end_date = datetime(2019, 6, 24)
+
 
 
 class RNN(nn.Module):
@@ -56,6 +54,7 @@ class RNN(nn.Module):
 
         return hidden
 
+
 def date_range(start: datetime, end: datetime, step: timedelta):
     date_list = []
 
@@ -65,6 +64,8 @@ def date_range(start: datetime, end: datetime, step: timedelta):
 
     return date_list
 
+start_date = datetime(2016, 1, 2)
+end_date = datetime(2019, 6, 24)
 candles = OrderedDict()
 
 for chunk_date in date_range(start_date, end_date, timedelta(days=1)):
@@ -77,7 +78,6 @@ for chunk_date in date_range(start_date, end_date, timedelta(days=1)):
 data = np.zeros((len(candles)))
 
 for index, key in enumerate(candles):
-
     candle = candles[key]
 
     time = candle["time"]
@@ -90,13 +90,13 @@ for index, key in enumerate(candles):
     data[index] = close
 
 seq_length = 20
-input_size=1
-output_size=1
-hidden_dim=32
-n_layers=1
+input_size = 1
+output_size = 1
+hidden_dim = 32
+n_layers = 1
 
-time = np.arange(0, 10, 0.01);
-data   = np.sin(time)
+time = np.arange(0, 10, 0.01)
+data = np.sin(time)
 
 # instantiate an RNN
 rnn = RNN(input_size, output_size, hidden_dim, n_layers)
@@ -135,6 +135,7 @@ def batch_data(words, sequence_length, batch_size):
     # return a dataloader
     return dataloader
 
+
 # there is no test for this function, but you are encouraged to create
 # print statements and tests of your own
 batch_size = 32
@@ -147,6 +148,7 @@ print(sample_x)
 print()
 print(sample_y.shape)
 
+
 def train(rnn, n_epochs, print_every):
     # initialize the hidden state
     batch_losses = []
@@ -157,7 +159,6 @@ def train(rnn, n_epochs, print_every):
     for epoch_i in range(1, n_epochs + 1):
         hidden = rnn.init_hidden(batch_size)
 
-
         for batch_i, (inputs, labels) in enumerate(train_loader, 1):
             # outputs from the rnn
 
@@ -167,7 +168,7 @@ def train(rnn, n_epochs, print_every):
             if (batch_i > n_batches):
                 break
 
-            inputs = inputs.reshape((batch_size, seq_length, 1)) # input_size=1
+            inputs = inputs.reshape((batch_size, seq_length, 1))  # input_size=1
             labels = labels.reshape((batch_size, 1))
 
             prediction, hidden = rnn(inputs, hidden)
@@ -202,8 +203,8 @@ def generate(rnn, current_seq, predict_len=800):
 
     hidden = rnn.init_hidden(1)
 
-    gen_seq = deque([d.data.numpy() for d in current_seq], maxlen = seq_length)
-    gen_out = deque(maxlen = predict_len)
+    gen_seq = deque([d.data.numpy() for d in current_seq], maxlen=seq_length)
+    gen_out = deque(maxlen=predict_len)
 
     for i in range(predict_len):
         gen_seq_torch = torch.from_numpy(np.array(gen_seq))
@@ -227,7 +228,6 @@ print_every = 5
 trained_rnn = train(rnn, n_steps, print_every)
 
 generated = generate(trained_rnn, sample_x[0])
-
 
 plt.plot(time, data, time[21:21 + 800], generated)
 plt.show()

@@ -2,15 +2,22 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import visdom
+import json
+import keras
 
 from torch import nn
 from torch.utils.data import TensorDataset, DataLoader
 from torch.nn.utils import clip_grad_norm_
+from datetime import timedelta, datetime
+from collections import OrderedDict
+from torch.nn.functional import normalize
 
 np.random.seed(0)
 torch.manual_seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(device)
+
 
 class Model(nn.Module):
     def __init__(self, input_size, output_size, hidden_size, n_layers, drop_prob):
@@ -22,20 +29,20 @@ class Model(nn.Module):
         self.noise_mean = 0.0
         self.noise_stddev = 0.1
 
-        self.net = nn.LSTM(input_size, hidden_size, num_layers = n_layers, dropout=drop_prob, batch_first=True)
+        self.net = nn.LSTM(input_size, hidden_size, num_layers=n_layers, dropout=drop_prob, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
 
-    def forward(self, input, hidden, add_noise = False):
+    def forward(self, input, hidden, add_noise=False):
         # x (batch_size, seq_length, input_size)
         # hidden (n_layers, batch_size, hidden_dim)
         # r_out (batch_size, time_step, hidden_size)
 
-        if(add_noise):
+        if (add_noise):
             noise = input.data.new(input.size()).normal_(self.noise_mean, self.noise_stddev)
             input = input + noise
 
         out, hidden = self.net(input, hidden)
-        out = out[:,-1,:] #only last sequence is evaluated
+        out = out[:, -1, :]  # only last sequence is evaluated
         out = self.fc(out)
 
         return out, hidden
@@ -43,8 +50,16 @@ class Model(nn.Module):
     def init_hidden(self, batch_size):
         weight = next(self.parameters()).data
 
-        return (weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1,1).to(device),
-                weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1,1).to(device))
+        return (weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1, 1).to(device),
+                weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1, 1).to(device))
+# seq_length = 64
+# input_size = 1
+# output_size = 1
+# hidden_dim = 128
+# n_layers = 2
+# batch_size = 512
+# n_epoches = 1000
+# drop_prob = 0.5
 
 seq_length = 64
 input_size = 1
@@ -52,11 +67,59 @@ output_size = 1
 hidden_dim = 128
 n_layers = 2
 batch_size = 512
-n_epoches = 1000
+n_epoches = 100
 drop_prob = 0.5
 
-time = np.arange(0.001, 100, 0.01);
-data  = np.sin(time)
+
+def date_range(start: datetime, end: datetime, step: timedelta):
+    date_list = []
+
+    while start < end:
+        date_list.append(start)
+        start += step
+
+    return date_list
+
+
+start_date = datetime(2019, 6, 23)
+end_date = datetime(2019, 6, 24)
+candles = OrderedDict()
+
+for chunk_date in date_range(start_date, end_date, timedelta(days=1)):
+    filename = chunk_date.strftime('btceur/btceur_%Y_%m_%d.json')
+
+    with open(filename) as json_file:
+        data = json.load(json_file)
+        candles.update(data)
+
+data = np.zeros((len(candles)))
+
+for index, key in enumerate(candles):
+    candle = candles[key]
+
+    time = candle["time"]
+    low = candle["low"]
+    high = candle["high"]
+    open = candle["open"]
+    close = candle["close"]
+    volume = candle["volume"]
+
+    data[index] = close
+
+
+# time = np.arange(0.001, 100, 0.01)
+# data = np.sin(time)
+
+# ux = torch.tensor(data)
+# magnitude = ux.norm(keepdim=True)
+# ux = normalize(ux)
+# ux_orig = ux * magnitude
+
+dataMAX = np.max(data)
+dataMIN = np.min(data)
+
+data = keras.utils.normalize(data).T
+data = data.ravel()
 
 def create_dataloader(data, sequence_length, batch_size):
     window_len = sequence_length + 1
@@ -69,7 +132,6 @@ def create_dataloader(data, sequence_length, batch_size):
     targets = np.zeros((sequence_n_max), dtype=np.float32)
 
     for i in range(0, sequence_n_max):
-
         batch_idx = (i % batch_n_max) * batch_size
         offset_idx = i // batch_n_max
         start_idx = batch_idx + offset_idx
@@ -85,7 +147,9 @@ def create_dataloader(data, sequence_length, batch_size):
 
     return dataloader_train
 
+
 dataloader_train = create_dataloader(data, seq_length, batch_size)
+
 
 def test_model(model, criterion, data, seq_length):
     model.eval()
@@ -124,6 +188,7 @@ def test_model(model, criterion, data, seq_length):
 
     return gen_out, loss_sum
 
+
 def train_model(model, optimizer, criterion, n_epochs):
     best_loss = float("inf")
     best_model = None
@@ -144,7 +209,7 @@ def train_model(model, optimizer, criterion, n_epochs):
 
             optimizer.zero_grad()
 
-            out, hidden = model(inputs, hidden, add_noise = True)
+            out, hidden = model(inputs, hidden, add_noise=True)
             hidden = tuple([each.data for each in hidden])
 
             loss = criterion(out, targets)
@@ -165,19 +230,21 @@ def train_model(model, optimizer, criterion, n_epochs):
 
         model.eval()
 
-        if(epoch_loss < best_loss):
+        if epoch_loss < best_loss:
             best_loss = epoch_loss
             best_model = Model(input_size, output_size, hidden_dim, n_layers, drop_prob).to(device)
             best_model.load_state_dict(model.state_dict())
 
-        print('Epoch: {:>4}/{:<4} Loss: {:.10f} AvgLoss: {:.10f} BstLoss: {:.10f}'.format(epoch_i, n_epochs, epoch_loss, np.average(epoch_losses), best_loss))
+        print('Epoch: {:>4}/{:<4} Loss: {:.10f} AvgLoss: {:.10f} BstLoss: {:.10f}'.format(epoch_i, n_epochs, epoch_loss,
+                                                                                          np.average(epoch_losses),
+                                                                                          best_loss))
 
-    linecolor = np.array([
-        [255, 0, 0]
-    ])
-
-    vis = visdom.Visdom()
-    vis.line(Y=epoch_losses, opts=dict(linecolor=linecolor))
+    # linecolor = np.array([
+    #     [255, 0, 0]
+    # ])
+    #
+    # vis = visdom.Visdom()
+    # vis.line(Y=epoch_losses, opts=dict(linecolor=linecolor))
 
     return best_model
 
@@ -192,8 +259,11 @@ model = train_model(model, optimizer, criterion, n_epoches)
 
 generated, loss_sum = test_model(model, criterion, data, seq_length)
 
+generated = generated * (dataMAX - dataMIN) + dataMIN
+data = data * (dataMAX - dataMIN) + dataMIN
 print(loss_sum)
 
 range_gen = range(0, len(generated))
-plt.plot(range_gen, generated, range_gen, data[seq_length:len(generated) + seq_length])
+
+plt.plot(range_gen, data[seq_length:len(generated) + seq_length], range_gen, generated)
 plt.show()
