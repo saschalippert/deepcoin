@@ -54,9 +54,8 @@ output_size = 1
 hidden_dim = 128
 n_layers = 2
 batch_size = 512
-n_epoches = 10
+n_epoches = 500
 drop_prob = 0.5
-batch_size = 512
 lr = 0.001
 
 time_sine = np.arange(0.001, 100, 0.01);
@@ -75,8 +74,6 @@ def create_dataloader(data, sequence_length):
         inputs[start] = np.array(data[start:end])
         targets[start] = np.array(data[end])
 
-    batch_size = sequence_length
-
     dataset_train = TensorDataset(torch.from_numpy(inputs), torch.from_numpy(targets))
 
     dataloader_train = DataLoader(dataset_train, shuffle=False, batch_size=batch_size, drop_last=True)
@@ -90,30 +87,27 @@ def test_model(model, data, seq_length):
 
     predict_len = len(data) - seq_length
 
+    gen_seq = np.array(data[0:seq_length], dtype=np.float32)
     gen_out = np.zeros((predict_len), dtype=np.float32)
 
-    hidden = model.init_hidden(1)
+    for i in range(0, predict_len):
+        hidden = model.init_hidden(1)
 
-    input = torch.tensor(data[0:seq_length], dtype=torch.float32)
-    input = input.reshape((1, seq_length, 1)).to(device)
+        gen_seq_torch = torch.from_numpy(gen_seq)
 
-    out, hidden = model(input, hidden)
-    hidden = tuple([each.data for each in hidden])
+        input = gen_seq_torch.reshape((1, seq_length, 1)).to(device)
 
-    np_out = out.detach().cpu().numpy()
-
-    gen_out[0] = np_out
-
-    for i in range(1, predict_len):
-        input = torch.tensor(np_out, dtype=torch.float32)
-        input = input.reshape((1, 1, 1)).to(device)
-
-        out, hidden = model(input, hidden)
-        hidden = tuple([each.data for each in hidden])
+        out, _ = model(input, hidden)
 
         np_out = out.detach().cpu().numpy()
 
         gen_out[i] = np_out
+
+        gen_seq[0] = np_out
+        gen_seq = np.roll(gen_seq, -1)
+
+        if i % seq_length == 0:
+            gen_seq = np.array(data[i:i+seq_length], dtype=np.float32)
 
     return gen_out
 

@@ -42,23 +42,23 @@ class Model(nn.Module):
     def init_hidden(self, batch_size):
         weight = next(self.parameters()).data
 
-        return (weight.new(self.n_layers, batch_size, self.hidden_size).zero_().to(device),
-                weight.new(self.n_layers, batch_size, self.hidden_size).zero_().to(device))
+        return (weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1,1).to(device),
+                weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1,1).to(device))
 
 seq_length = 64
 input_size = 1
 output_size = 1
 hidden_dim = 128
 n_layers = 2
-batch_size = 512
-n_epoches = 1000
+batch_size = 9935
+n_epoches = 10
 drop_prob = 0.5
 lr = 0.001
 
 time = np.arange(0.001, 100, 0.01);
 data  = np.sin(time)
 
-def create_dataloader(data, sequence_length):
+def create_dataloader(data, sequence_length, batch_size):
     window_len = sequence_length + 1
     sequences = len(data) - window_len
 
@@ -72,31 +72,31 @@ def create_dataloader(data, sequence_length):
         targets[start] = np.array(data[end])
 
     dataset_train = TensorDataset(torch.from_numpy(inputs), torch.from_numpy(targets))
-
     dataloader_train = DataLoader(dataset_train, shuffle=False, batch_size=batch_size, drop_last=True)
 
     return dataloader_train
 
-dataloader_train = create_dataloader(data, seq_length)
+dataloader_train = create_dataloader(data, seq_length, batch_size)
 
 def test_model(model, data, seq_length):
     model.eval()
 
     predict_len = len(data) - seq_length
 
-    gen_out = np.zeros((predict_len), dtype=np.float32)
+    gen_out = np.zeros(predict_len, dtype=np.float32)
 
     hidden = model.init_hidden(1)
 
-    input = torch.tensor(data[0:seq_length], dtype=torch.float32)
-    input = input.reshape((1, seq_length, 1)).to(device)
+    for i in range(0, seq_length):
+        input = torch.tensor(data[i], dtype=torch.float32)
+        input = input.reshape((1, 1, 1)).to(device)
 
-    out, hidden = model(input, hidden)
-    hidden = tuple([each.data for each in hidden])
+        out, hidden = model(input, hidden)
+        hidden = tuple([each.data for each in hidden])
 
-    np_out = out.detach().cpu().numpy()
+        np_out = out.detach().cpu().numpy()
 
-    gen_out[0] = np_out
+        gen_out[i] = np_out
 
     for i in range(1, predict_len):
         input = torch.tensor(np_out, dtype=torch.float32)
@@ -123,15 +123,19 @@ def train_model(model, optimizer, criterion, n_epochs):
 
         epoch_loss = 0
 
+        hidden = model.init_hidden(batch_size)
+
         for batch_i, (inputs, targets) in enumerate(dataloader_train):
-            hidden = model.init_hidden(batch_size)
+
+
 
             inputs = inputs.reshape((batch_size, seq_length, 1)).to(device)
             targets = targets.reshape((batch_size, 1)).to(device)
 
             optimizer.zero_grad()
 
-            out, _ = model(inputs, hidden, add_noise = True)
+            out, hidden = model(inputs, hidden, add_noise = True)
+            hidden = tuple([each.data for each in hidden])
 
             loss = criterion(out, targets)
 
