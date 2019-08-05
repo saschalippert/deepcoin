@@ -1,10 +1,13 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import json
 
 from torch import nn
 from torch.utils.data import TensorDataset, DataLoader
 from torch.nn.utils import clip_grad_norm_
+from datetime import timedelta, datetime
+from collections import OrderedDict
 
 np.random.seed(0)
 torch.manual_seed(0)
@@ -51,12 +54,13 @@ output_size = 1
 hidden_dim = 128
 n_layers = 2
 batch_size = 512
-n_epoches = 1000
+n_epoches = 10
 drop_prob = 0.5
+batch_size = 512
 lr = 0.001
 
-time = np.arange(0.001, 100, 0.01);
-data  = np.sin(time)
+time_sine = np.arange(0.001, 100, 0.01);
+data_sine  = np.sin(time_sine)
 
 def create_dataloader(data, sequence_length):
     window_len = sequence_length + 1
@@ -71,13 +75,15 @@ def create_dataloader(data, sequence_length):
         inputs[start] = np.array(data[start:end])
         targets[start] = np.array(data[end])
 
+    batch_size = sequence_length
+
     dataset_train = TensorDataset(torch.from_numpy(inputs), torch.from_numpy(targets))
 
     dataloader_train = DataLoader(dataset_train, shuffle=False, batch_size=batch_size, drop_last=True)
 
     return dataloader_train
 
-dataloader_train = create_dataloader(data, seq_length)
+dataloader_sine_train = create_dataloader(data_sine, seq_length)
 
 def test_model(model, data, seq_length):
     model.eval()
@@ -111,7 +117,7 @@ def test_model(model, data, seq_length):
 
     return gen_out
 
-def train_model(model, optimizer, criterion, n_epochs):
+def train_model(model, optimizer, criterion, n_epochs, dataloader_train):
     best_loss = float("inf")
     best_model = None
 
@@ -160,16 +166,63 @@ def train_model(model, optimizer, criterion, n_epochs):
 
     return best_model
 
-model = Model(input_size, output_size, hidden_dim, n_layers, drop_prob).to(device)
-print(model)
 
-criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+def start(dataloader_train, test_data):
+    model = Model(input_size, output_size, hidden_dim, n_layers, drop_prob).to(device)
+    print(model)
 
-model = train_model(model, optimizer, criterion, n_epoches)
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-generated = test_model(model, data, seq_length)
+    model = train_model(model, optimizer, criterion, n_epoches, dataloader_train)
+    generated = test_model(model, test_data, seq_length)
 
-range_gen = range(0, len(generated))
-plt.plot(range_gen, generated, range_gen, data[seq_length:])
-plt.show()
+    range_gen = range(0, len(generated))
+    plt.plot(range_gen, generated, range_gen, test_data[seq_length:])
+    plt.show()
+
+start(dataloader_sine_train, data_sine)
+
+def date_range(start: datetime, end: datetime, step: timedelta):
+    date_list = []
+
+    while start < end:
+        date_list.append(start)
+        start += step
+
+    return date_list
+
+start_date = datetime(2019, 6, 23)
+end_date = datetime(2019, 6, 24)
+candles = OrderedDict()
+
+for load_candles in date_range(start_date, end_date, timedelta(days=1)):
+    filename = load_candles.strftime('btceur/btceur_%Y_%m_%d.json')
+
+    with open(filename) as json_file:
+        data_candles = json.load(json_file)
+        candles.update(data_candles)
+
+data_candles = np.zeros((len(candles)))
+
+for index, key in enumerate(candles):
+    candle = candles[key]
+
+    time = candle["time"]
+    low = candle["low"]
+    high = candle["high"]
+    open = candle["open"]
+    close = candle["close"]
+    volume = candle["volume"]
+
+    data_candles[index] = close
+
+data_max = np.max(data_candles)
+data_min = np.min(data_candles)
+
+data_candles = (data_candles - data_min) / (data_max - data_min)
+
+
+dataloader_candles_train = create_dataloader(data_candles, seq_length)
+
+start(dataloader_candles_train, data_candles)
