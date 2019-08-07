@@ -142,8 +142,6 @@ def train_model(model, optimizer, criterion, n_epochs, dataloader_train):
 
             epoch_loss += np_loss
 
-        epoch_loss = epoch_loss / (batch_size * len(dataloader_train))
-
         epoch_losses.append(epoch_loss)
 
         model.eval()

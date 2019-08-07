@@ -55,7 +55,7 @@ output_size = 1
 hidden_dim = 128
 n_layers = 2
 batch_size = 512
-n_epoches = 10
+n_epoches = 1000
 drop_prob = 0.5
 lr = 0.001
 
@@ -108,14 +108,11 @@ def test_model(model, data, seq_length):
 
     return gen_out
 
-writer = SummaryWriter(log_dir="/home/sascha/logs/simplesine7")
+writer = SummaryWriter(log_dir="/home/sascha/logs/simplesine9")
 
 def train_model(model, optimizer, criterion, n_epochs):
     best_loss = float("inf")
     best_model = None
-
-
-
 
     epoch_losses = []
 
