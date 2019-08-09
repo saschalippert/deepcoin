@@ -171,11 +171,11 @@ print(model)
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-model = train_model(model, optimizer, criterion, n_epoches)
+#model = train_model(model, optimizer, criterion, n_epoches)
 
-torch.save(model.state_dict(), 'checkpoint_simplesine2.pth')
+#torch.save(model.state_dict(), 'checkpoint_simplesine_stateful.pth')
 
-#model.load_state_dict(torch.load('checkpoint_simplesine2.pth'))
+model.load_state_dict(torch.load('checkpoint_simplesine_stateful.pth'))
 
 generated = test_model(model, data, seq_length)
 

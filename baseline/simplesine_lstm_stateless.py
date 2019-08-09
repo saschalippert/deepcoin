@@ -8,7 +8,7 @@ from torch.utils.data import TensorDataset, DataLoader
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.tensorboard import SummaryWriter
 
-plt.switch_backend('agg')
+#plt.switch_backend('agg')
 
 np.random.seed(0)
 torch.manual_seed(0)
@@ -165,11 +165,11 @@ print(model)
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-model = train_model(model, optimizer, criterion, n_epoches)
+#model = train_model(model, optimizer, criterion, n_epoches)
 
-#torch.save(model.state_dict(), 'checkpoint_simplesine.pth')
+#torch.save(model.state_dict(), 'checkpoint_simplesine_stateless.pth')
 
-#model.load_state_dict(torch.load('checkpoint_simplesine.pth'))
+model.load_state_dict(torch.load('checkpoint_simplesine_stateless.pth'))
 
 generated = test_model(model, data, seq_length)
 
@@ -178,6 +178,7 @@ range_gen = range(0, len(generated))
 fig = plt.figure()
 
 plt.plot(range_gen, generated, range_gen, data[seq_length:len(generated) + seq_length])
-writer.add_figure('matplotlib/figure', fig)
+plt.show()
+#writer.add_figure('matplotlib/figure', fig)
 
 print("end")
