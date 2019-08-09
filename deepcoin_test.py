@@ -11,6 +11,7 @@ from collections import OrderedDict
 
 np.random.seed(0)
 torch.manual_seed(0)
+scale = 1
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -25,7 +26,6 @@ class Model(nn.Module):
         self.noise_mean = 0.0
         self.noise_stddev = 0.1
 
-        self.bn = nn.InstanceNorm1d(64)
         self.net = nn.LSTM(input_size, hidden_size, num_layers=n_layers, dropout=drop_prob, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
 
@@ -38,18 +38,17 @@ class Model(nn.Module):
             noise = input.data.new(input.size()).normal_(self.noise_mean, self.noise_stddev)
             input = input + noise
 
-        input = self.bn(input)
         out, hidden = self.net(input, hidden)
         out = out[:, -1, :]  # only last sequence is evaluated
-        out = nn.Tanh()(self.fc(out))
+        out = self.fc(out)
 
         return out, hidden
 
     def init_hidden(self, batch_size):
         weight = next(self.parameters()).data
 
-        return (weight.new(self.n_layers, batch_size, self.hidden_size).zero_().to(device),
-                weight.new(self.n_layers, batch_size, self.hidden_size).zero_().to(device))
+        return (weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1, 1).to(device),
+                weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1, 1).to(device))
 
 
 seq_length = 64
@@ -58,7 +57,7 @@ output_size = 1
 hidden_dim = 128
 n_layers = 2
 batch_size = 512
-n_epoches = 400
+n_epoches = 50
 drop_prob = 0.5
 lr = 0.001
 
@@ -153,9 +152,6 @@ def test_modelBTC(model, data, seq_length):
     gen_seq = np.array(data[0:seq_length], dtype=np.float32)
     gen_out = np.zeros((predict_len), dtype=np.float32)
 
-    predicted_price = 1
-    real_price = 1
-
     for i in range(0, predict_len):
         hidden = model.init_hidden(1)
 
@@ -165,18 +161,10 @@ def test_modelBTC(model, data, seq_length):
 
         out, _ = model(input, hidden)
 
-        predicted_return = out.detach().cpu().numpy()
+        predicted_price = out.detach().cpu().numpy()
 
-        gen_seq[0] = predicted_return
+        gen_seq[0] = predicted_price
         gen_seq = np.roll(gen_seq, -1)
-
-        predicted_price = predicted_price + (predicted_price * predicted_return)
-        real_price = real_price + (real_price * data[seq_length + i])
-
-        #predicted_price = predicted_price * math.exp(predicted_return)
-        #real_price = real_price * math.exp(data[seq_length + i])
-
-        print(real_price, predicted_price, predicted_return, predicted_price - real_price)
 
         gen_out[i] = predicted_price
 
@@ -185,7 +173,7 @@ def test_modelBTC(model, data, seq_length):
             data_past = data[i - seq_length]
             diff_prediction = abs(data_future - data_past)
 
-            if (predicted_return > data_past):
+            if (predicted_price > data_past):
                 if data_future > data_past:
                     gain += diff_prediction
                 else:
@@ -197,11 +185,8 @@ def test_modelBTC(model, data, seq_length):
                     gain -= diff_prediction
 
             gen_seq = np.array(data[i - seq_length:i], dtype=np.float32)
-            predicted_price = real_price
 
-            print("reset")
-
-    print("gain", gain)
+    print("gain", gain * scale)
 
     return gen_out
 
@@ -228,7 +213,7 @@ def train_model(model, optimizer, criterion, n_epochs, dataloaders):
 
             optimizer.zero_grad()
 
-            out, _ = model(inputs, hidden, add_noise=False)
+            out, _ = model(inputs, hidden, add_noise=True)
 
             loss = criterion(out, targets)
 
@@ -257,7 +242,7 @@ def train_model(model, optimizer, criterion, n_epochs, dataloaders):
             inputs = inputs.reshape((batch_size_eval, seq_length, 1)).to(device)
             targets = targets.reshape((batch_size_eval, 1)).to(device)
 
-            out, _ = model(inputs, hidden, add_noise=False)
+            out, _ = model(inputs, hidden, add_noise=True)
 
             loss = criterion(out, targets)
 
@@ -267,8 +252,8 @@ def train_model(model, optimizer, criterion, n_epochs, dataloaders):
 
         avg_eval_loss = np.average(eval_losses)
 
-        if avg_eval_loss < best_loss:
-            best_loss = avg_eval_loss
+        if avg_train_loss < best_loss:
+            best_loss = avg_train_loss
             best_model = Model(input_size, output_size, hidden_dim, n_layers, drop_prob).to(device)
             best_model.load_state_dict(model.state_dict())
 
@@ -315,19 +300,9 @@ def startBTC(dataloaders, test_data, name):
 
     generated = test_modelBTC(model, test_data[idx_test:], seq_length)
 
-    data_returns = test_data[idx_test + seq_length:]
-    data_candles = []
-    price = 1
-
-    for i in range(0, len(data_returns)):
-        #price = price + (price * data_returns[i])
-
-        price = price * math.exp(data_returns[i])
-
-        data_candles.append(price)
 
     range_gen = range(0, len(generated))
-    plt.plot(range_gen, generated, range_gen, data_candles)
+    plt.plot(range_gen, generated, range_gen, test_data[idx_test + seq_length:])
     plt.show()
 
 
@@ -344,7 +319,7 @@ def date_range(start: datetime, end: datetime, step: timedelta):
     return date_list
 
 
-start_date = datetime(2019, 6, 23)
+start_date = datetime(2019, 6, 2)
 end_date = datetime(2019, 6, 24)
 candles = OrderedDict()
 
@@ -369,39 +344,18 @@ for index, key in enumerate(candles):
 
     data_candles[index] = close
 
-#data_max = np.max(data_candles)
-#data_min = np.min(data_candles)
+data_max = np.max(data_candles)
+data_min = np.min(data_candles)
+scale = data_max - data_min
 
-#data_candles = (data_candles - data_min) / (data_max - data_min)
-
-data_returns = []
-
-for i in range(1, len(data_candles)):
-    prev = data_candles[i - 1]
-    current = data_candles[i]
-
-    c = (current - prev)
-
-    #c = math.log(current / prev)
-
-    data_returns.append(c)
-
-data_max = np.max(data_returns)
-data_min = np.min(data_returns)
+data_candles = (data_candles - data_min) / scale
 
 
-data_returns = (data_returns - data_min) / (data_max - data_min)
-
-#data_mean = np.mean(data_returns)
-#data_returns = data_returns - data_mean
-
-plt.hist(data_returns, 50, normed=1, facecolor='green', alpha=0.75)
+plt.hist(data_candles, 50, normed=1, facecolor='green', alpha=0.75)
 plt.show()
 
+dataloaders = create_dataloaderBTC(data_candles, seq_length)
 
-
-dataloaders = create_dataloaderBTC(data_returns, seq_length)
-
-startBTC(dataloaders, data_returns, "candles")
+startBTC(dataloaders, data_candles, "candles")
 
 print("end")
