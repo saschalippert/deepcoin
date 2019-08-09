@@ -98,6 +98,14 @@ def create_dataloaderBTC(data, sequence_length, train_percentage=0.7, eval_perce
         inputs[start] = np.array(data[start:end])
         targets[start] = np.array(data[end])
 
+    idx_shuffle = list(range(0, len(inputs)))
+
+    import random
+    random.shuffle(idx_shuffle)
+
+    inputs = inputs[idx_shuffle]
+    targets = targets[idx_shuffle]
+
     idx_eval = math.trunc(len(inputs) * train_percentage)
     idx_test = (math.trunc(len(inputs) * eval_percentage)) + idx_eval
 
@@ -252,8 +260,8 @@ def train_model(model, optimizer, criterion, n_epochs, dataloaders):
 
         avg_eval_loss = np.average(eval_losses)
 
-        if avg_train_loss < best_loss:
-            best_loss = avg_train_loss
+        if avg_eval_loss < best_loss:
+            best_loss = avg_eval_loss
             best_model = Model(input_size, output_size, hidden_dim, n_layers, drop_prob).to(device)
             best_model.load_state_dict(model.state_dict())
 

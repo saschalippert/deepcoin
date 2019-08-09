@@ -8,7 +8,7 @@ from torch.utils.data import TensorDataset, DataLoader
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.tensorboard import SummaryWriter
 
-#plt.switch_backend('agg')
+plt.switch_backend('agg')
 
 np.random.seed(0)
 torch.manual_seed(0)
@@ -55,9 +55,9 @@ output_size = 1
 hidden_dim = 128
 n_layers = 2
 batch_size = 512
-n_epoches = 1000
+n_epoches = 10
 drop_prob = 0.5
-lr = 0.001
+lr = 0.1
 
 time = np.arange(0.001, 100, 0.01);
 data  = np.sin(time)
@@ -108,7 +108,7 @@ def test_model(model, data, seq_length):
 
     return gen_out
 
-writer = SummaryWriter(log_dir="/home/sascha/logs/simplesine9")
+writer = SummaryWriter(log_dir="C:\\Users\\thoma\\tensorboard\\logs\\simplesine12")
 
 def train_model(model, optimizer, criterion, n_epochs):
     best_loss = float("inf")
@@ -165,11 +165,11 @@ print(model)
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-#model = train_model(model, optimizer, criterion, n_epoches)
+model = train_model(model, optimizer, criterion, n_epoches)
 
 #torch.save(model.state_dict(), 'checkpoint_simplesine_stateless.pth')
 
-model.load_state_dict(torch.load('checkpoint_simplesine_stateless.pth'))
+#model.load_state_dict(torch.load('checkpoint_simplesine_stateless.pth'))
 
 generated = test_model(model, data, seq_length)
 
@@ -178,7 +178,9 @@ range_gen = range(0, len(generated))
 fig = plt.figure()
 
 plt.plot(range_gen, generated, range_gen, data[seq_length:len(generated) + seq_length])
-plt.show()
-#writer.add_figure('matplotlib/figure', fig)
+#plt.show()
+writer.add_figure('matplotlib/figure', fig)
+
+writer.close()
 
 print("end")

@@ -11,4 +11,4 @@ fig = go.Figure(data=[go.Candlestick(x=df['Date'],
                 low=df['AAPL.Low'],
                 close=df['AAPL.Close'])])
 
-fig.write_html(renderer="browser")
+fig.write_html("hans.html")
