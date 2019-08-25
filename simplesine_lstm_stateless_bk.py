@@ -54,7 +54,7 @@ hp_output_size = 1
 hp_hidden_dim = 128
 hp_n_layers = 2
 hp_batch_size = 512
-hp_n_epoches = 500
+hp_n_epoches = 100
 hp_drop_prob = 0.5
 hp_lr = 0.001
 
@@ -144,7 +144,7 @@ def train_model(model, optimizer, criterion, n_epochs):
         model_copy = lambda: Model(hp_input_size, hp_output_size, hp_hidden_dim, hp_n_layers, hp_drop_prob).to(device)
         bookkeeper.train_step(epoch_loss, epoch_loss, model, model_copy)
 
-    return bookkeeper.get_best_model()
+    return bookkeeper.eval_best_model()
 
 
 model = Model(hp_input_size, hp_output_size, hp_hidden_dim, hp_n_layers, hp_drop_prob).to(device)

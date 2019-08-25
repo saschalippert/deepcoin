@@ -6,12 +6,12 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import json
 
+
 class Bookkeeper:
 
     def __init__(self, model_name, num_episodes, hyper_parameters):
         self._train_losses = []
         self._eval_losses = []
-        self._test_losses = []
         self._num_episodes = num_episodes
         self._home = str(Path.home())
         self._min_loss = float("inf")
@@ -22,6 +22,8 @@ class Bookkeeper:
         now_str = now.strftime("%Y%m%d_%H%M%S")
 
         log_dir = os.path.join(self._home, "tensorboard", "logs", self._model_name, now_str)
+
+        print("log_dir", log_dir)
 
         self._writer = SummaryWriter(log_dir=log_dir)
         self._writer.add_text("text/hyper_parameters", json.dumps(hyper_parameters))
@@ -45,11 +47,13 @@ class Bookkeeper:
 
         print(f'Episode: {episode:>5}/{self._num_episodes:<5} TrainLoss: {train_loss:.8f} AvgTrainLoss: {t_avg_loss:.8f} MinTrainLoss: {t_min_loss:.8f} EvalLoss: {eval_loss:.8f} AvgEvalLoss: {e_avg_loss:.8f} MinEvalLoss: {e_min_loss:.8f}')
 
-        if(eval_loss < self._min_loss):
+        if (eval_loss < self._min_loss):
             self._best_model = model_copy()
             self._best_model.load_state_dict(model.state_dict())
 
-    def get_best_model(self):
+    def eval_best_model(self):
+        self._writer.add_text("text/model", self._best_model.__repr__())
+
         return self._best_model
 
     def close(self):
