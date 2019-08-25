@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from torch import nn
 from torch.utils.data import TensorDataset, DataLoader
 from torch.nn.utils import clip_grad_norm_
-from Bookkeeper import Bookkeeper
+from bookkeeper import Bookkeeper
 
 np.random.seed(0)
 torch.manual_seed(0)
