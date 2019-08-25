@@ -277,11 +277,11 @@ def start(dataloader_train, test_data, name):
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    model = train_model(model, optimizer, criterion, n_epoches, dataloader_train)
+    #model = train_model(model, optimizer, criterion, n_epoches, dataloader_train)
 
-    torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
+    #torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
 
-    # model.load_state_dict(torch.load(f'checkpoint_deepcoin_{name}.pth'))
+    model.load_state_dict(torch.load(f'checkpoint_deepcoin_{name}.pth'))
 
     generated = test_model(model, test_data, seq_length)
 
@@ -297,11 +297,11 @@ def startBTC(dataloaders, test_data, name):
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    model = train_model(model, optimizer, criterion, n_epoches, dataloaders)
+    #model = train_model(model, optimizer, criterion, n_epoches, dataloaders)
 
-    torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
+    #torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
 
-    #model.load_state_dict(torch.load(f'checkpoint_deepcoin_{name}.pth'))
+    model.load_state_dict(torch.load(f'checkpoint_deepcoin_{name}.pth'))
 
     #idx_test = len(dataloaders[0].dataset) + len(dataloaders[1].dataset)
     idx_test = 0
@@ -327,8 +327,8 @@ def date_range(start: datetime, end: datetime, step: timedelta):
     return date_list
 
 
-start_date = datetime(2019, 6, 2)
-end_date = datetime(2019, 6, 24)
+start_date = datetime(2018, 3, 2)
+end_date = datetime(2018, 4, 24)
 candles = OrderedDict()
 
 for load_candles in date_range(start_date, end_date, timedelta(days=1)):

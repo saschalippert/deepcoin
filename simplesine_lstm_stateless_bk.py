@@ -1,19 +1,17 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from datetime import datetime
 
 from torch import nn
 from torch.utils.data import TensorDataset, DataLoader
 from torch.nn.utils import clip_grad_norm_
-from torch.utils.tensorboard import SummaryWriter
-
-#plt.switch_backend('agg')
+from Bookkeeper import Bookkeeper
 
 np.random.seed(0)
 torch.manual_seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class Model(nn.Module):
     def __init__(self, input_size, output_size, hidden_size, n_layers, drop_prob):
@@ -25,20 +23,20 @@ class Model(nn.Module):
         self.noise_mean = 0.0
         self.noise_stddev = 0.1
 
-        self.net = nn.LSTM(input_size, hidden_size, num_layers = n_layers, dropout=drop_prob, batch_first=True)
+        self.net = nn.LSTM(input_size, hidden_size, num_layers=n_layers, dropout=drop_prob, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
 
-    def forward(self, input, hidden, add_noise = False):
+    def forward(self, input, hidden, add_noise=False):
         # x (batch_size, seq_length, input_size)
         # hidden (n_layers, batch_size, hidden_dim)
         # r_out (batch_size, time_step, hidden_size)
 
-        if(add_noise):
+        if (add_noise):
             noise = input.data.new(input.size()).normal_(self.noise_mean, self.noise_stddev)
             input = input + noise
 
         out, hidden = self.net(input, hidden)
-        out = out[:,-1,:] #only last sequence is evaluated
+        out = out[:, -1, :]  # only last sequence is evaluated
         out = self.fc(out)
 
         return out, hidden
@@ -46,21 +44,23 @@ class Model(nn.Module):
     def init_hidden(self, batch_size):
         weight = next(self.parameters()).data
 
-        return (weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1,1).to(device),
-                weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1,1).to(device))
+        return (weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1, 1).to(device),
+                weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1, 1).to(device))
 
-seq_length = 64
-input_size = 1
-output_size = 1
-hidden_dim = 128
-n_layers = 2
-batch_size = 512
-n_epoches = 500
-drop_prob = 0.5
-lr = 0.001
+
+hp_seq_length = 64
+hp_input_size = 1
+hp_output_size = 1
+hp_hidden_dim = 128
+hp_n_layers = 2
+hp_batch_size = 512
+hp_n_epoches = 500
+hp_drop_prob = 0.5
+hp_lr = 0.001
 
 time = np.arange(0.001, 100, 0.01);
-data  = np.sin(time)
+data = np.sin(time)
+
 
 def create_dataloader(data, sequence_length, batch_size):
     window_len = sequence_length + 1
@@ -80,7 +80,11 @@ def create_dataloader(data, sequence_length, batch_size):
 
     return dataloader_train
 
-dataloader_train = create_dataloader(data, seq_length, batch_size)
+
+dataloader_train = create_dataloader(data, hp_seq_length, hp_batch_size)
+
+bookkeeper = Bookkeeper("simplesine_lstm_stateless", hp_n_epoches, {k: v for k, v in globals().items() if k.startswith("hp_")})
+
 
 def test_model(model, data, seq_length):
     model.eval()
@@ -108,29 +112,22 @@ def test_model(model, data, seq_length):
 
     return gen_out
 
-writer = SummaryWriter(log_dir="C:\\Users\\thoma\\tensorboard\\logs\\simplesine12")
 
 def train_model(model, optimizer, criterion, n_epochs):
-    best_loss = float("inf")
-    best_model = None
-
-    epoch_losses = []
-
-    print("Training for %d epoch(s)..." % n_epochs)
     for epoch_i in range(1, n_epochs + 1):
         model.train()
 
         epoch_loss = 0
 
         for batch_i, (inputs, targets) in enumerate(dataloader_train):
-            hidden = model.init_hidden(batch_size)
+            hidden = model.init_hidden(hp_batch_size)
 
-            inputs = inputs.reshape((batch_size, seq_length, 1)).to(device)
-            targets = targets.reshape((batch_size, 1)).to(device)
+            inputs = inputs.reshape((hp_batch_size, hp_seq_length, 1)).to(device)
+            targets = targets.reshape((hp_batch_size, 1)).to(device)
 
             optimizer.zero_grad()
 
-            out, _ = model(inputs, hidden, add_noise = True)
+            out, _ = model(inputs, hidden, add_noise=True)
 
             loss = criterion(out, targets)
 
@@ -144,43 +141,34 @@ def train_model(model, optimizer, criterion, n_epochs):
 
             epoch_loss += np_loss
 
-        writer.add_scalar('data/Loss', epoch_loss, epoch_i)
+        model_copy = lambda: Model(hp_input_size, hp_output_size, hp_hidden_dim, hp_n_layers, hp_drop_prob).to(device)
+        bookkeeper.train_step(epoch_loss, epoch_loss, model, model_copy)
 
-        epoch_losses.append(epoch_loss)
+    return bookkeeper.get_best_model()
 
-        if(epoch_loss < best_loss):
-            best_loss = epoch_loss
-            best_model = Model(input_size, output_size, hidden_dim, n_layers, drop_prob).to(device)
-            best_model.load_state_dict(model.state_dict())
 
-        print('Epoch: {:>4}/{:<4} Loss: {:.10f} AvgLoss: {:.10f} BstLoss: {:.10f}'.format(epoch_i, n_epochs, epoch_loss, np.average(epoch_losses), best_loss))
-
-    writer.close()
-
-    return best_model
-
-model = Model(input_size, output_size, hidden_dim, n_layers, drop_prob).to(device)
+model = Model(hp_input_size, hp_output_size, hp_hidden_dim, hp_n_layers, hp_drop_prob).to(device)
 print(model)
 
 criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+optimizer = torch.optim.Adam(model.parameters(), lr=hp_lr)
 
-model = train_model(model, optimizer, criterion, n_epoches)
+model = train_model(model, optimizer, criterion, hp_n_epoches)
 
-#torch.save(model.state_dict(), 'checkpoint_simplesine_stateless.pth')
+# torch.save(model.state_dict(), 'checkpoint_simplesine_stateless.pth')
 
-#model.load_state_dict(torch.load('checkpoint_simplesine_stateless.pth'))
+# model.load_state_dict(torch.load('checkpoint_simplesine_stateless.pth'))
 
-generated = test_model(model, data, seq_length)
+generated = test_model(model, data, hp_seq_length)
 
 range_gen = range(0, len(generated))
 
-fig = plt.figure()
+def plot_figure():
+    fig = plt.figure()
+    plt.plot(range_gen, generated, range_gen, data[hp_seq_length:len(generated) + hp_seq_length])
+    return fig
 
-plt.plot(range_gen, generated, range_gen, data[seq_length:len(generated) + seq_length])
-plt.show()
-#writer.add_figure('matplotlib/figure', fig)
+bookkeeper.add_figure(plot_figure, "test")
+plot_figure().show()
 
-writer.close()
-
-print("end")
+bookkeeper.close()
