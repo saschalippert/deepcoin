@@ -83,8 +83,8 @@ def create_dataloader(data, sequence_length, batch_size):
 
 dataloader_train = create_dataloader(data, hp_seq_length, hp_batch_size)
 
-bookkeeper = Bookkeeper("simplesine_lstm_stateless", hp_n_epoches, {k: v for k, v in globals().items() if k.startswith("hp_")})
-
+hyperparameters = {k: v for k, v in globals().items() if k.startswith("hp_")}
+bookkeeper = Bookkeeper("simplesine_lstm_stateless")
 
 def test_model(model, data, seq_length):
     model.eval()
@@ -114,6 +114,8 @@ def test_model(model, data, seq_length):
 
 
 def train_model(model, optimizer, criterion, n_epochs):
+    bookkeeper.train_start(n_epochs, "sine", hyperparameters)
+
     for epoch_i in range(1, n_epochs + 1):
         model.train()
 
