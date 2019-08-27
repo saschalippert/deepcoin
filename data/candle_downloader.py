@@ -44,11 +44,11 @@ end_date = datetime(2019, 6, 25)
 candles_loaded = dict()
 
 candles_date = start_date.date()
-for chunk_start_date, chunk_end_date in date_range(start_date, end_date, timedelta(hours=5)):
+for chunk_start_date, chunk_end_date in date_range(start_date, end_date, timedelta(hours=24)):
     iso_start = chunk_start_date.replace(microsecond=0).isoformat()
     iso_end = chunk_end_date.replace(microsecond=0).isoformat()
 
-    candles_loaded.update(load_candles(iso_start, iso_end, '60'))
+    candles_loaded.update(load_candles(iso_start, iso_end, '3600'))
 
     candles_write = dict()
 
@@ -60,12 +60,12 @@ for chunk_start_date, chunk_end_date in date_range(start_date, end_date, timedel
                 candles_write[ts_key] = candles_loaded[ts_key]
                 del candles_loaded[ts_key]
 
-        filename = candles_date.strftime('btceur/btceur_%Y_%m_%d.json')
+        filename = candles_date.strftime('../btceur1h/btceur1h_%Y_%m_%d.json')
 
         with open(filename, 'w') as outfile:
             json.dump(OrderedDict(sorted(candles_write.items())), outfile, indent=4)
 
-        expected_len = 60 * 24
+        expected_len = 24
         actual_len = len(candles_write)
         print("written", candles_date, actual_len, (expected_len - actual_len) / expected_len)
 

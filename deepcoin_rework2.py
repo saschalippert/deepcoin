@@ -7,7 +7,7 @@ from torch import nn
 from torch.nn.utils import clip_grad_norm_
 from bookkeeper import Bookkeeper
 
-from deepcoin_norm import Normalizer_Min_Max
+from deepcoin_norm import Normalizer_Min_Max, Normalizer_Min_Max2
 import deepcoin_candles as candles
 import deepcoin_dataloader as dataloader
 from deepcoin_order import Order
@@ -18,13 +18,13 @@ torch.manual_seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-hp_seq_length = 64
+hp_seq_length = 24
 hp_input_size = 1
 hp_output_size = 1
 hp_hidden_dim = 128
 hp_n_layers = 2
 hp_batch_size = 512
-hp_n_episodes = 500
+hp_n_episodes = 300
 hp_drop_prob = 0.5
 hp_lr = 0.0001
 
@@ -33,17 +33,32 @@ data_sine = np.sin(time_sine)
 
 normalizer = Normalizer_Min_Max()
 
-start_date = datetime(2018, 9, 2)
-end_date = datetime(2019, 2, 24)
+start_date = datetime(2018, 2, 2)
+end_date = datetime(2018, 6, 24)
 data_candles = candles.load_candles(".", "btceur1h", start_date, end_date)
 data_candles = data_candles[['close']].to_numpy().flatten()
-data_candles = normalizer.normalize(data_candles)
 
-plt.hist(data_candles, 50, facecolor='green', alpha=0.75)
+#data_returns = (data_candles[1:-1] - data_candles[0:-2]) / data_candles[0:-2]
+#data_returns = np.log(data_candles[1:-1] / data_candles[0:-2])
+
+data_returns = (data_candles[1:] / data_candles[0:-1]) - 1
+
+data_comp = np.zeros((len(data_candles)))
+data_comp[0] = data_candles[0]
+
+for i in range(1, len(data_comp)):
+    data_comp[i] = data_comp[i - 1] * (data_returns[i - 1] + 1)
+
+
+#data_returns = normalizer.normalize(data_returns)
+
+#data_returns = normalizer.normalize(data_returns)
+
+plt.hist(data_returns, 50, facecolor='green', alpha=0.75)
 plt.show()
 
 dataloader_sine = dataloader.create_dataloader_train(data_sine, hp_seq_length, hp_batch_size)
-dataloaders_btc = dataloader.create_dataloader_full(data_candles, hp_seq_length, hp_batch_size)
+dataloaders_btc = dataloader.create_dataloader_full(data_returns, hp_seq_length, hp_batch_size)
 
 hyperparameters = {k: v for k, v in globals().items() if k.startswith("hp_")}
 bookkeeper = Bookkeeper("deepcoin")
@@ -57,6 +72,7 @@ def predict_price(model, history, n_future, device):
 
     for i in range(0, n_future):
         hidden = model.init_hidden(1)
+        hidden = None
 
         gen_seq_torch = torch.tensor(gen_seq)
         input = gen_seq_torch.reshape((1, len(history), 1)).to(device)
@@ -75,7 +91,7 @@ def predict_price(model, history, n_future, device):
 
 from tqdm import tqdm
 
-def test_model_btc(model, data, seq_length, normalizer, device):
+def test_model_btc(model, data, seq_length, normalizer, device, current_price):
     gain = 0.0
     profits = 0.0
     fees = 0.0
@@ -85,10 +101,14 @@ def test_model_btc(model, data, seq_length, normalizer, device):
     order = None
 
     for i in tqdm(range(seq_length, len(data))):
-        current_price = normalizer.denormalize(data[i])
+        current_price = current_price * (1 + data[i])
         history = data[i - seq_length + 1: i + 1]
-        future = normalizer.denormalize(predict_price(model, history, 24, device))
-        predicted_price = future[-1]
+        future = predict_price(model, history, 1, device)
+
+        predicted_price = current_price
+
+        for j in range(0, len(future)):
+            predicted_price *= (1 + future[j])
 
         direction = predicted_price > current_price
 
@@ -109,7 +129,7 @@ def test_model_btc(model, data, seq_length, normalizer, device):
     if(order):
         current_price = normalizer.denormalize(data[-1])
 
-        profit, fee = order.close(current_price, 0.0025)
+        profit, fee = order.close(current_price, 0.0026)
 
         profits += profit
         fees += fee
@@ -136,13 +156,14 @@ def train_model(model, optimizer, criterion, n_epochs, bookkeeper, dataloaders, 
             batch_size_train = inputs.size(0)
 
             hidden = model.init_hidden(batch_size_train)
+            hidden = None
 
             inputs = inputs.reshape((batch_size_train, hp_seq_length, 1)).to(device)
             targets = targets.reshape((batch_size_train, 1)).to(device)
 
             optimizer.zero_grad()
 
-            out, _ = model(inputs, hidden, add_noise=True)
+            out, _ = model(inputs, hidden, add_noise=False)
 
             loss = criterion(out, targets)
 
@@ -163,12 +184,14 @@ def train_model(model, optimizer, criterion, n_epochs, bookkeeper, dataloaders, 
         if (len(dataloaders) > 1):
             for batch_i, (inputs, targets) in enumerate(dataloaders[1]):
                 batch_size_eval = inputs.size(0)
+
                 hidden = model.init_hidden(batch_size_eval)
+                hidden = None
 
                 inputs = inputs.reshape((batch_size_eval, hp_seq_length, 1)).to(device)
                 targets = targets.reshape((batch_size_eval, 1)).to(device)
 
-                out, _ = model(inputs, hidden, add_noise=True)
+                out, _ = model(inputs, hidden, add_noise=False)
 
                 loss = criterion(out, targets)
 
@@ -224,10 +247,10 @@ def plot_figure2(data):
 
 model_btc = create_and_train_model(bookkeeper, dataloaders_btc, "btc", hp_n_episodes, hyperparameters)
 btc_test_generated, btc_test_gains, btc_test_pos, btc_test_profits, btc_test_fees = test_model_btc(model_btc,
-                                                                                                   data_candles,
+                                                                                                   data_returns,
                                                                                                    hp_seq_length,
-                                                                                                   normalizer, device)
-bookkeeper.add_figure(lambda: plot_figure(normalizer.denormalize(data_candles), btc_test_generated), "btc/test")
+                                                                                                   normalizer, device, data_candles[hp_seq_length])
+#bookkeeper.add_figure(lambda: plot_figure(normalizer.denormalize(data_candles), btc_test_generated), "btc/test")
 bookkeeper.add_figure(lambda: plot_figure2(btc_test_gains), "btc/test/gains")
 bookkeeper.add_figure(lambda: plot_figure2(btc_test_pos), "btc/test/pos")
 
