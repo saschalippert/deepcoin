@@ -25,7 +25,7 @@ hp_output_size = 1
 hp_hidden_dim = 128
 hp_n_layers = 2
 hp_batch_size = 512
-hp_n_episodes = 500
+hp_n_episodes = 100
 hp_drop_prob = 0.5
 hp_lr = 0.001
 
@@ -34,7 +34,8 @@ data_sine = np.sin(time_sine)
 
 start_date = datetime(2018, 3, 2)
 end_date = datetime(2018, 4, 24)
-data_candles = candles.load_candles("btceur", start_date, end_date)
+data_candles = candles.load_candles(".", "btceur", start_date, end_date)
+data_candles = data_candles[['close']].to_numpy().flatten()
 data_candles = norm.norm_min_max(data_candles)
 
 plt.hist(data_candles, 50, facecolor='green', alpha=0.75)
@@ -58,6 +59,9 @@ def test_model_btc(model, data, seq_length, device):
 
     gen_seq = np.array(data[0:seq_length], dtype=np.float32)
     gen_out = np.zeros((predict_len), dtype=np.float32)
+
+    gains = []
+    gen_pos = np.zeros((predict_len), dtype=np.float32)
 
     for i in range(0, predict_len):
         hidden = model.init_hidden(1)
@@ -86,23 +90,30 @@ def test_model_btc(model, data, seq_length, device):
             data_future = data[i]
             data_past = data[i - seq_length]
             diff_prediction = abs(data_future - data_past)
+            fee = 0.0026
 
             if (predicted_price > data_past):
+                gen_pos[i - seq_length:i] = 1
+
                 if data_future > data_past:
                     gain += diff_prediction
                 else:
                     gain -= diff_prediction
             else:
+                gen_pos[i - seq_length:i] = -1
+
                 if data_future < data_past:
                     gain += diff_prediction
                 else:
                     gain -= diff_prediction
 
+            gain -= fee
+
+            gains.append(gain)
+
             gen_seq = np.array(data[i - seq_length:i], dtype=np.float32)
 
-    print("gain", gain)
-
-    return gen_out, total_loss, gain
+    return gen_out, total_loss, gains, gen_pos
 
 
 def train_model(model, optimizer, criterion, n_epochs, bookkeeper, dataloaders, data_name, hyperparameters):
@@ -171,9 +182,9 @@ def create_and_train_model(bookkeeper, dataloaders, name, n_episodes, hyperparam
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=hp_lr)
 
-    model = train_model(model, optimizer, criterion, n_episodes, bookkeeper, dataloaders, name, hyperparameters)
+    #model = train_model(model, optimizer, criterion, n_episodes, bookkeeper, dataloaders, name, hyperparameters)
 
-    torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
+    #torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
 
     model.load_state_dict(torch.load(f'checkpoint_deepcoin_{name}.pth'))
 
@@ -187,15 +198,26 @@ def plot_figure(original, generated):
 
     return fig
 
-model_sine = create_and_train_model(bookkeeper, [dataloader_sine], "sine", hp_n_episodes, hyperparameters)
+def plot_figure2(data):
+    range_gen = range(0, len(data))
+
+    fig = plt.figure()
+    plt.plot(range_gen, data)
+
+    return fig
+
+model_sine = create_and_train_model(bookkeeper, [dataloader_sine], "sine", 1, hyperparameters)
 sine_test_generated, sine_test_loss = test_model_sine(model_sine, data_sine, hp_seq_length, device)
 bookkeeper.add_figure(lambda : plot_figure(data_sine, sine_test_generated), "sine/test")
 bookkeeper.add_text("sine/test/loss", str(sine_test_loss))
 
 model_btc = create_and_train_model(bookkeeper, dataloaders_btc, "btc", hp_n_episodes, hyperparameters)
-btc_test_generated, btc_test_loss, btc_test_gain = test_model_btc(model_btc, data_candles, hp_seq_length, device)
+btc_test_generated, btc_test_loss, btc_test_gains, btc_test_pos = test_model_btc(model_btc, data_candles, hp_seq_length, device)
 bookkeeper.add_figure(lambda : plot_figure(data_candles, btc_test_generated), "btc/test")
+bookkeeper.add_figure(lambda : plot_figure2(btc_test_gains), "btc/test/gains")
+bookkeeper.add_figure(lambda : plot_figure2(btc_test_pos), "btc/test/pos")
 bookkeeper.add_text("btc/test/loss", str(btc_test_loss))
-bookkeeper.add_text("btc/test/gain", str(btc_test_gain))
+
+
 
 print("end")
