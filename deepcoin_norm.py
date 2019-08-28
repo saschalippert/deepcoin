@@ -1,5 +1,15 @@
 import numpy as np
 
+class Normalizer_Noop:
+
+    def __init__(self):
+        pass
+
+    def normalize(self, data):
+        return data
+
+    def denormalize(self, data):
+        return data
 
 class Normalizer_Min_Max:
 

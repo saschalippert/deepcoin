@@ -33,8 +33,9 @@ data_sine = np.sin(time_sine)
 
 normalizer = Normalizer_Min_Max()
 
-start_date = datetime(2018, 9, 2)
-end_date = datetime(2019, 2, 24)
+start_date = datetime(2018, 2, 2)
+end_date = datetime(2018, 6, 24)
+
 data_candles = candles.load_candles(".", "btceur1h", start_date, end_date)
 data_candles = data_candles[['close']].to_numpy().flatten()
 data_candles = normalizer.normalize(data_candles)
@@ -56,7 +57,7 @@ def predict_price(model, history, n_future, device):
     gen_out = np.zeros(n_future, dtype=np.float32)
 
     for i in range(0, n_future):
-        hidden = model.init_hidden(1)
+        hidden = model.init_hidden_zero(1)
 
         gen_seq_torch = torch.tensor(gen_seq)
         input = gen_seq_torch.reshape((1, len(history), 1)).to(device)
@@ -90,11 +91,11 @@ def test_model_btc(model, data, seq_length, normalizer, device):
         future = normalizer.denormalize(predict_price(model, history, 24, device))
         predicted_price = future[-1]
 
-        direction = predicted_price > current_price
+        is_long = predicted_price > current_price
 
         if (not order):
-            order = Order(current_price, direction)
-        elif (direction != order.direction()):
+            order = Order(current_price, is_long)
+        elif (is_long != order.is_long()):
             profit, fee = order.close(current_price, 0.0026)
 
             profits += profit
@@ -103,7 +104,7 @@ def test_model_btc(model, data, seq_length, normalizer, device):
             gain += profit - fee
             gains.append(gain)
 
-            order = Order(current_price, direction)
+            order = Order(current_price, is_long)
             print(gain)
 
     if(order):
@@ -135,14 +136,14 @@ def train_model(model, optimizer, criterion, n_epochs, bookkeeper, dataloaders, 
         for batch_i, (inputs, targets) in enumerate(dataloaders[0]):
             batch_size_train = inputs.size(0)
 
-            hidden = model.init_hidden(batch_size_train)
+            hidden = model.init_hidden_zero(batch_size_train)
 
             inputs = inputs.reshape((batch_size_train, hp_seq_length, 1)).to(device)
             targets = targets.reshape((batch_size_train, 1)).to(device)
 
             optimizer.zero_grad()
 
-            out, _ = model(inputs, hidden, add_noise=True)
+            out, _ = model(inputs, hidden, add_noise=False)
 
             loss = criterion(out, targets)
 
@@ -163,12 +164,12 @@ def train_model(model, optimizer, criterion, n_epochs, bookkeeper, dataloaders, 
         if (len(dataloaders) > 1):
             for batch_i, (inputs, targets) in enumerate(dataloaders[1]):
                 batch_size_eval = inputs.size(0)
-                hidden = model.init_hidden(batch_size_eval)
+                hidden = model.init_hidden_zero(batch_size_eval)
 
                 inputs = inputs.reshape((batch_size_eval, hp_seq_length, 1)).to(device)
                 targets = targets.reshape((batch_size_eval, 1)).to(device)
 
-                out, _ = model(inputs, hidden, add_noise=True)
+                out, _ = model(inputs, hidden, add_noise=False)
 
                 loss = criterion(out, targets)
 
@@ -190,9 +191,9 @@ def create_and_train_model(bookkeeper, dataloaders, name, n_episodes, hyperparam
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=hp_lr)
 
-    #model = train_model(model, optimizer, criterion, n_episodes, bookkeeper, dataloaders, name, hyperparameters)
+    model = train_model(model, optimizer, criterion, n_episodes, bookkeeper, dataloaders, name, hyperparameters)
 
-    #torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
+    torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
 
     model.load_state_dict(torch.load(f'checkpoint_deepcoin_{name}.pth'))
 

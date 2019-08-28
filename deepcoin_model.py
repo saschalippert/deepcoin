@@ -28,8 +28,14 @@ class Model(nn.Module):
 
         return out, hidden
 
-    def init_hidden(self, batch_size):
+    def init_hidden_normal(self, batch_size):
         weight = next(self.parameters()).data
 
-        return (weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1, 1),
-                weight.new(self.n_layers, batch_size, self.hidden_size).normal_(-1, 1))
+        return (weight.new(self.n_layers, batch_size, self.hidden_size).normal_(0, 1),
+                weight.new(self.n_layers, batch_size, self.hidden_size).normal_(0, 1))
+
+    def init_hidden_zero(self, batch_size):
+        weight = next(self.parameters()).data
+
+        return (weight.new(self.n_layers, batch_size, self.hidden_size).zero_(),
+                weight.new(self.n_layers, batch_size, self.hidden_size).zero_())

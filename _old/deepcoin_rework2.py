@@ -71,8 +71,7 @@ def predict_price(model, history, n_future, device):
     gen_out = np.zeros(n_future, dtype=np.float32)
 
     for i in range(0, n_future):
-        hidden = model.init_hidden(1)
-        hidden = None
+        hidden = model.init_hidden_zero(1)
 
         gen_seq_torch = torch.tensor(gen_seq)
         input = gen_seq_torch.reshape((1, len(history), 1)).to(device)
@@ -110,11 +109,11 @@ def test_model_btc(model, data, seq_length, normalizer, device, current_price):
         for j in range(0, len(future)):
             predicted_price *= (1 + future[j])
 
-        direction = predicted_price > current_price
+        is_long = predicted_price > current_price
 
         if (not order):
-            order = Order(current_price, direction)
-        elif (direction != order.direction()):
+            order = Order(current_price, is_long)
+        elif (is_long != order.is_long()):
             profit, fee = order.close(current_price, 0.0026)
 
             profits += profit
@@ -123,7 +122,7 @@ def test_model_btc(model, data, seq_length, normalizer, device, current_price):
             gain += profit - fee
             gains.append(gain)
 
-            order = Order(current_price, direction)
+            order = Order(current_price, is_long)
             print(gain)
 
     if(order):
@@ -155,8 +154,7 @@ def train_model(model, optimizer, criterion, n_epochs, bookkeeper, dataloaders, 
         for batch_i, (inputs, targets) in enumerate(dataloaders[0]):
             batch_size_train = inputs.size(0)
 
-            hidden = model.init_hidden(batch_size_train)
-            hidden = None
+            hidden = model.init_hidden_zero(batch_size_train)
 
             inputs = inputs.reshape((batch_size_train, hp_seq_length, 1)).to(device)
             targets = targets.reshape((batch_size_train, 1)).to(device)
@@ -185,8 +183,7 @@ def train_model(model, optimizer, criterion, n_epochs, bookkeeper, dataloaders, 
             for batch_i, (inputs, targets) in enumerate(dataloaders[1]):
                 batch_size_eval = inputs.size(0)
 
-                hidden = model.init_hidden(batch_size_eval)
-                hidden = None
+                hidden = model.init_hidden_zero(batch_size_eval)
 
                 inputs = inputs.reshape((batch_size_eval, hp_seq_length, 1)).to(device)
                 targets = targets.reshape((batch_size_eval, 1)).to(device)

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import json
 
 
-class Bookkeeper:
+class Logger:
 
     def __init__(self, model_name):
         self._train_losses = []
