@@ -109,6 +109,7 @@ def test_model_btc(model, data, seq_length, normalizer, device, data_start, tran
         history = data[seq_end_idx - seq_length: seq_end_idx]
         future = predict_price(model, history, hp_n_future, device)
 
+        #predicted_price = np.average(transformer.revert_list(current_price, normalizer.denormalize(future)))
         predicted_price = transformer.revert_list(current_price, normalizer.denormalize(future))[-1]
 
         is_long = predicted_price > current_price
@@ -216,9 +217,9 @@ def create_and_train_model(logger, dataloaders, name, n_episodes, hyperparameter
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=hp_lr)
 
-    model = train_model(model, optimizer, criterion, n_episodes, logger, dataloaders, name, hyperparameters)
+    #model = train_model(model, optimizer, criterion, n_episodes, logger, dataloaders, name, hyperparameters)
 
-    torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
+    #torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
 
     model.load_state_dict(torch.load(f'checkpoint_deepcoin_{name}.pth'))
 
