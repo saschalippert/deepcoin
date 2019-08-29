@@ -29,33 +29,41 @@ hp_batch_size = 512
 hp_n_episodes = 300
 hp_drop_prob = 0.5
 hp_lr = 0.0001
-hp_n_future = 1
+hp_n_future = 24
+hp_chart = "btceur1h"
 
 time_sine = np.arange(0.001, 100, 0.01)
 data_sine = np.sin(time_sine)
 
-normalizer = Normalizer_Noop()
-transformer = Transformer_Return()
+#normalizer = Normalizer_Noop()
+#transformer = Transformer_Return()
 
-#normalizer = Normalizer_Min_Max()
-#transformer = Transformer_Noop()
+normalizer = Normalizer_Min_Max()
+transformer = Transformer_Noop()
 
-start_date = datetime(2018, 3, 2)
-end_date = datetime(2018, 4, 24)
+train_start_date = datetime(2018, 3, 2)
+train_end_date = datetime(2018, 4, 24)
 
-data_candles = candles.load_candles(".", "btceur1h", start_date, end_date)
-data_candles = data_candles[['close']].to_numpy().flatten()
+test_start_date = datetime(2017, 2, 2)
+test_end_date = datetime(2019, 5, 24)
 
-data_input = transformer.transform(data_candles)
-data_comp = transformer.revert_list(data_candles[0], data_input)
+train_data_candles = candles.load_candles(".", hp_chart, train_start_date, train_end_date)
+train_data_candles = train_data_candles[['close']].to_numpy().flatten()
+train_data_input = transformer.transform(train_data_candles)
+train_data_input = normalizer.normalize(train_data_input)
 
-data_input = normalizer.normalize(data_input)
+#data_comp = transformer.revert_list(train_data_candles[0], train_data_input)
 
-plt.hist(data_input, 50, facecolor='green', alpha=0.75)
+test_data_candles = candles.load_candles(".", hp_chart, test_start_date, test_end_date)
+test_data_candles = test_data_candles[['close']].to_numpy().flatten()
+test_data_input = transformer.transform(test_data_candles)
+test_data_input = normalizer.normalize(test_data_input)
+
+plt.hist(train_data_input, 50, facecolor='green', alpha=0.75)
 plt.show()
 
 dataloader_sine = dataloader.create_dataloader_train(data_sine, hp_seq_length, hp_batch_size)
-dataloaders_btc = dataloader.create_dataloader_full(data_input, hp_seq_length, hp_batch_size)
+dataloaders_btc = dataloader.create_dataloader_full(train_data_input, hp_seq_length, hp_batch_size)
 
 hyperparameters = {k: v for k, v in globals().items() if k.startswith("hp_")}
 logger = Logger("deepcoin")
@@ -114,11 +122,31 @@ def test_model_btc(model, data, seq_length, normalizer, device, data_start, tran
     if (order):
         accountant.close(order, current_price, 0.0026)
 
-    print("count", accountant._count)
-    print("profits", accountant._profits)
-    print("fees", accountant._fees)
-    print("gain", accountant._gain)
-    print("gain total", sum(accountant._gain))
+    spacing = 20
+
+    print("count".ljust(spacing), accountant._count)
+    print("profits".ljust(spacing), accountant._profits)
+
+    print("sum wins".ljust(spacing), sum(accountant._wins))
+    print("sum losses".ljust(spacing), sum(accountant._losses))
+
+    print("fees".ljust(spacing), accountant._fees)
+
+    print("drawdown max".ljust(spacing), accountant._drawdown_max)
+    print("max loss streak".ljust(spacing), accountant._max_loss_streak)
+
+    print("avg win".ljust(spacing), accountant._avg_win)
+    print("avg loss".ljust(spacing), accountant._avg_loss)
+    print("avg gain".ljust(spacing), accountant._avg_gain)
+
+    print("balance max".ljust(spacing), accountant._balance_max)
+    print("balance min".ljust(spacing), accountant._balance_min)
+    print("balance end".ljust(spacing), accountant._balance)
+
+    print("gain".ljust(spacing), accountant._gain)
+    print("gain total".ljust(spacing), sum(accountant._gain))
+
+    return accountant._balance_history
 
 
 def train_model(model, optimizer, criterion, n_epochs, logger, dataloaders, data_name, hyperparameters):
@@ -221,11 +249,15 @@ def plot_figure2(data):
 # logger.add_text("sine/test/loss", str(sine_test_loss))
 
 model_btc = create_and_train_model(logger, dataloaders_btc, "btc", hp_n_episodes, hyperparameters)
-test_model_btc(model_btc,
-               data_input,
-               hp_seq_length,
-               normalizer, device,
-               data_candles[0], transformer, hp_n_future)
+history = test_model_btc(model_btc,
+                         test_data_input,
+                         hp_seq_length,
+                         normalizer, device,
+                         train_data_candles[0], transformer, hp_n_future)
+
+plot_figure2(history)
+plt.show()
+
 # logger.add_figure(lambda: plot_figure(normalizer.denormalize(data_candles), btc_test_generated), "btc/test")
 # logger.add_figure(lambda: plot_figure2(btc_test_gains), "btc/test/gains")
 # logger.add_figure(lambda: plot_figure2(btc_test_pos), "btc/test/pos")

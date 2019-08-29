@@ -23,7 +23,7 @@ def create_dataloader_train(data, sequence_length, batch_size):
 
     return dataloader_train
 
-def create_dataloader_full(data, sequence_length, batch_size, train_percentage=0.7, eval_percentage=0.15):
+def create_dataloader_full(data, sequence_length, batch_size, test_percentage=0.75, balance = False):
     window_len = sequence_length + 1
     sequences = len(data) - window_len
 
@@ -42,15 +42,31 @@ def create_dataloader_full(data, sequence_length, batch_size, train_percentage=0
     inputs = inputs[idx_shuffle]
     targets = targets[idx_shuffle]
 
-    idx_eval = math.trunc(len(inputs) * train_percentage)
-    idx_test = (math.trunc(len(inputs) * eval_percentage)) + idx_eval
+    if(balance):
+        idx_pos = []
+        idx_neg = []
+
+        for i in range(0, sequences):
+            first_target = targets[i]
+
+            if (first_target > 0):
+                idx_pos.append(i)
+            else:
+                idx_neg.append(i)
+
+        len_pos = len(idx_pos)
+        len_neg = len(idx_neg)
+        len_balanced = min(len_pos, len_neg)
+
+        inputs = inputs[idx_pos[0:len_balanced]]
+        targets = targets[idx_neg[0:len_balanced]]
+
+    idx_eval = math.trunc(len(inputs) * test_percentage)
 
     dataset_train = TensorDataset(torch.from_numpy(inputs[:idx_eval]), torch.from_numpy(targets[:idx_eval]))
-    dataset_eval = TensorDataset(torch.from_numpy(inputs[idx_eval:idx_test]), torch.from_numpy(targets[idx_eval:idx_test]))
-    dataset_test = TensorDataset(torch.from_numpy(inputs[idx_test:]), torch.from_numpy(targets[idx_test:]))
+    dataset_eval = TensorDataset(torch.from_numpy(inputs[idx_eval:-1]), torch.from_numpy(targets[idx_eval:-1]))
 
     dataloader_train = DataLoader(dataset_train, shuffle=True, batch_size=batch_size, drop_last=False)
     dataloader_eval = DataLoader(dataset_eval, shuffle=True, batch_size=len(dataset_eval), drop_last=False)
-    dataloader_test = DataLoader(dataset_test, shuffle=False, batch_size=len(dataset_test), drop_last=False)
 
-    return (dataloader_train, dataloader_eval, dataloader_test)
+    return (dataloader_train, dataloader_eval)
