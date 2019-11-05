@@ -16,7 +16,7 @@ class Transformer_Noop:
         return data
 
 
-class Transformer_Return:
+class Transformer_SimpleReturn:
 
     def __init__(self):
         pass
@@ -28,7 +28,7 @@ class Transformer_Return:
         return start * (data + 1)
 
     def revert_list(self, start, data):
-        result = np.zeros((len(data) + 1))
+        result = np.zeros(len(data) + 1)
         result[0] = start
 
         for i in range(1, len(result)):
@@ -36,5 +36,22 @@ class Transformer_Return:
 
         return result
 
-# data_returns = (data_candles[1:-1] - data_candles[0:-2]) / data_candles[0:-2]
-# data_returns = np.log(data_candles[1:-1] / data_candles[0:-2])
+class Transformer_LogReturn:
+
+    def __init__(self):
+        pass
+
+    def transform(self, data):
+        return np.log(data[1:] / data[0:-1])
+
+    def revert_single(self, start, data):
+        return start * np.exp(data)
+
+    def revert_list(self, start, data):
+        result = np.zeros(len(data) + 1)
+        result[0] = start
+
+        for i in range(1, len(result)):
+            result[i] = self.revert_single(result[i - 1], data[i - 1])
+
+        return result

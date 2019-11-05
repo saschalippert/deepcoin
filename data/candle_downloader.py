@@ -38,8 +38,8 @@ def date_range(start: datetime, end: datetime, step: timedelta):
     return date_list
 
 
-start_date = datetime(2016, 1, 1)
-end_date = datetime(2019, 6, 25)
+start_date = datetime(2019, 6, 25)
+end_date = datetime(2019, 11, 3)
 
 candles_loaded = dict()
 

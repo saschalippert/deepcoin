@@ -7,18 +7,18 @@ from torch import nn
 from torch.nn.utils import clip_grad_norm_
 from deepcoin_logger import Logger
 
-from deepcoin_norm import Normalizer_Noop, Normalizer_Min_Max
+from deepcoin_norm import Normalizer_Noop, Normalizer_Min_Max, Normalizer_ClipStdDev, Normalizer_Min_Max_Target
 import deepcoin_candles as candles
 import deepcoin_dataloader as dataloader
 from deepcoin_order import Order, Accountant
 from deepcoin_model import Model
-from deepcoin_transformer import Transformer_Return, Transformer_Noop
+from deepcoin_transformer import Transformer_SimpleReturn, Transformer_Noop, Transformer_LogReturn
 from tqdm import tqdm
 
 np.random.seed(0)
 torch.manual_seed(0)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 hp_seq_length = 24
 hp_input_size = 1
@@ -28,24 +28,24 @@ hp_n_layers = 2
 hp_batch_size = 512
 hp_n_episodes = 300
 hp_drop_prob = 0.5
-hp_lr = 0.0001
-hp_n_future = 24
+hp_lr = 0.000001
+hp_n_future = 1
 hp_chart = "btceur1h"
 
 time_sine = np.arange(0.001, 100, 0.01)
 data_sine = np.sin(time_sine)
 
-#normalizer = Normalizer_Noop()
-#transformer = Transformer_Return()
+normalizer = Normalizer_Noop()
+transformer = Transformer_SimpleReturn()
 
-normalizer = Normalizer_Min_Max()
-transformer = Transformer_Noop()
+#normalizer = Normalizer_Min_Max()
+#transformer = Transformer_Noop()
 
-train_start_date = datetime(2018, 3, 2)
-train_end_date = datetime(2018, 4, 24)
+train_start_date = datetime(2017, 6, 2)
+train_end_date = datetime(2018, 12, 24)
 
-test_start_date = datetime(2017, 2, 2)
-test_end_date = datetime(2019, 5, 24)
+test_start_date = datetime(2017, 1, 1)
+test_end_date = datetime(2019, 11, 2)
 
 train_data_candles = candles.load_candles(".", hp_chart, train_start_date, train_end_date)
 train_data_candles = train_data_candles[['close']].to_numpy().flatten()
@@ -60,6 +60,7 @@ test_data_input = transformer.transform(test_data_candles)
 test_data_input = normalizer.normalize(test_data_input)
 
 plt.hist(train_data_input, 50, facecolor='green', alpha=0.75)
+plt.title("input")
 plt.show()
 
 dataloader_sine = dataloader.create_dataloader_train(data_sine, hp_seq_length, hp_batch_size)
@@ -68,6 +69,7 @@ dataloaders_btc = dataloader.create_dataloader_full(train_data_input, hp_seq_len
 hyperparameters = {k: v for k, v in globals().items() if k.startswith("hp_")}
 logger = Logger("deepcoin")
 
+list_predicted = list()
 
 def predict_price(model, history, n_future, device):
     model.eval()
@@ -109,6 +111,8 @@ def test_model_btc(model, data, seq_length, normalizer, device, data_start, tran
         history = data[seq_end_idx - seq_length: seq_end_idx]
         future = predict_price(model, history, hp_n_future, device)
 
+        list_predicted.append(future[-1])
+
         #predicted_price = np.average(transformer.revert_list(current_price, normalizer.denormalize(future)))
         predicted_price = transformer.revert_list(current_price, normalizer.denormalize(future))[-1]
 
@@ -117,11 +121,11 @@ def test_model_btc(model, data, seq_length, normalizer, device, data_start, tran
         if (not order):
             order = Order(current_price, is_long)
         elif (is_long != order._long):
-            accountant.close(order, current_price, 0.0026)
+            accountant.close(order, current_price, 0.002)
             order = Order(current_price, is_long)
 
     if (order):
-        accountant.close(order, current_price, 0.0026)
+        accountant.close(order, current_price, 0.002)
 
     spacing = 20
 
@@ -217,9 +221,9 @@ def create_and_train_model(logger, dataloaders, name, n_episodes, hyperparameter
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=hp_lr)
 
-    #model = train_model(model, optimizer, criterion, n_episodes, logger, dataloaders, name, hyperparameters)
+    model = train_model(model, optimizer, criterion, n_episodes, logger, dataloaders, name, hyperparameters)
 
-    #torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
+    torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
 
     model.load_state_dict(torch.load(f'checkpoint_deepcoin_{name}.pth'))
 
@@ -244,6 +248,15 @@ def plot_figure2(data):
     return fig
 
 
+def plot_figure3(data1, data2):
+    range_gen = range(0, len(data1))
+
+    fig = plt.figure()
+    plt.plot(range_gen, data1, range_gen, data2)
+
+    return fig
+
+
 # model_sine = create_and_train_model(logger, [dataloader_sine], "sine", 1, hyperparameters)
 # sine_test_generated, sine_test_loss = test_model_sine(model_sine, data_sine, hp_seq_length, device)
 # logger.add_figure(lambda : plot_figure(data_sine, sine_test_generated), "sine/test")
@@ -254,10 +267,26 @@ history = test_model_btc(model_btc,
                          test_data_input,
                          hp_seq_length,
                          normalizer, device,
-                         train_data_candles[0], transformer, hp_n_future)
+                         test_data_candles[0], transformer, hp_n_future)
+
+
+print("min", np.min(list_predicted))
+print("max", np.max(list_predicted))
+print("mean", np.mean(list_predicted))
+plt.hist(list_predicted, 50, facecolor='green', alpha=0.75)
+plt.title("predicted")
+plt.show()
+
+
+plot_figure2(list_predicted)
+plt.title("comp")
+plt.show()
 
 plot_figure2(history)
+plt.title("history")
 plt.show()
+
+
 
 # logger.add_figure(lambda: plot_figure(normalizer.denormalize(data_candles), btc_test_generated), "btc/test")
 # logger.add_figure(lambda: plot_figure2(btc_test_gains), "btc/test/gains")
