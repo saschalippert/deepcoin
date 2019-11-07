@@ -78,3 +78,5 @@ class Accountant:
 
         if (sum_count > 0):
             self._avg_gain = sum(self._gain) / sum_count
+
+        return current_gain
