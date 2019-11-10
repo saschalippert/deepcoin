@@ -1,3 +1,5 @@
+from random import random
+
 import numpy as np
 import gym
 from gym import spaces
@@ -13,7 +15,6 @@ class TraderEnv(gym.Env):
         self.data = data
         self.data_features = data.shape[1]
         self.last_action = None
-        self.actions = [10, 10]
         self.train = train
 
         self.reward_range = (-1, 1)
@@ -32,41 +33,35 @@ class TraderEnv(gym.Env):
         self.idx_time = self.past - 1
         self.reward_sum = 0
         self.last_action = None
-        self.actions = [10, 10]
 
         return self._build_state()
 
     def step(self, action):
         self.idx_time = self.idx_time + 1
-
-        self.actions[action] += 1
-        action_ratio = abs(self.actions[0] / self.actions[1])
-        action_penalty = 1 - abs(action_ratio - 1)
-
-        #old_value = self.data[self.idx_time - 1][0]
-        new_value = self.data[self.idx_time][0]
-        delta_value = new_value
+        reward = 0
 
         if action:
-            delta_value = -delta_value
+            new_value = self.data[self.idx_time][0]
 
-        fees = 0.0016
+            roll = random()
 
-        if self.last_action == action:
-            fees = 0
+            if roll > 0.5:
+                new_value *= -1
 
-        #if self.train and delta_value < 0:
-        #    delta_value = delta_value * 2
+            reward = new_value
 
-        reward = delta_value - fees
+            reward = max(reward, -0.05)
+            reward = min(reward, 0.10)
 
-        #if self.train:
-        #    reward = delta_value * action_penalty - fees
+            reward - 0.0016
+
+            #if action != self.last_action:
+                #reward -= 0.0016
 
         self.reward_sum = self.reward_sum + reward
         self.last_action = action
 
-        #reward = np.clip(reward, -1, 1)
+        reward = np.clip(reward, -1, 1)
 
         state = self._build_state()
         done = self.idx_time >= len(self.data) - 1
@@ -102,29 +97,31 @@ test_end_date = datetime(2019, 11, 2)
 def change(data, column):
     data[column] = (data[column] / data[column].shift(1)) - 1
 
-def highlow(data, col, win, min = 0, max = 20000):
-    data[col + "min" + str(win)] = (data[col].rolling(window=win).min() - min) / max
-    data[col + "max" + str(win)] = (data[col].rolling(window=win).max() - min) / max
-
 def preprocess(data):
     data = data.drop('time', axis=1)
-    data = data.drop('volume', axis=1)
-    data = data.drop('low', axis=1)
-    data = data.drop('high', axis=1)
-    data = data.drop('open', axis=1)
 
-    highlow(data, "close", 2)
-    highlow(data, "close", 4)
-    highlow(data, "close", 8)
-    highlow(data, "close", 16)
-    highlow(data, "close", 32)
-    highlow(data, "close", 64)
-    highlow(data, "close", 128)
+    #data["volatility"] = (data["high"] - data["low"]) / max(data["high"])
 
+    #change(data, "volume")
+
+    data["low24"] = data["low"].rolling(window=24).min()
+    data["high24"] = data["high"].rolling(window=24).max()
+
+    data["close_low24"] = (data["close"] - data["low24"]) / data["high24"]
+    data["close_high24"] = (data["high"] - data["low24"]) / data["high24"]
+
+    data = data.drop('low24', axis=1)
+    data = data.drop('high24', axis=1)
+
+    data["volume"] = (data["volume"] - data["volume"].mean()) / data["volume"].std()
+
+    change(data, "open")
     change(data, "close")
+    change(data, "high")
+    change(data, "low")
 
     data = data.clip(-1, 1)
-    data = data.iloc[128:]
+    data = data.iloc[24:]
 
     return data.to_numpy()
 
@@ -137,7 +134,7 @@ eval_data_input = preprocess(eval_data_candles)
 test_data_candles = candles.load_candles(".", hp_chart, test_start_date, test_end_date)
 test_data_input = preprocess(test_data_candles)
 
-past = 3
+past = 5
 
 def eval(model, data):
     env = DummyVecEnv([lambda: TraderEnv(data, past, False)])
@@ -171,17 +168,17 @@ model = PPO2(MlpPolicy, env, verbose=0)
 #model = TRPO(MlpPolicy, env, verbose=0)
 
 best = None
-for i in range(1, 20):
-    model.learn(total_timesteps=20000)
-
-    rewards, actions, action_rewards = eval(model, eval_data_input)
-    reward = rewards[-1]
-
-    print(i, reward, actions, action_rewards)
-
-    if not best or reward > best:
-        best = reward
-        model.save("trader_ppo2")
+# for i in range(1, 20):
+#     model.learn(total_timesteps=20000)
+#
+#     rewards, actions, action_rewards = eval(model, eval_data_input)
+#     reward = rewards[-1]
+#
+#     print(i, reward, actions, action_rewards)
+#
+#     if not best or reward > best:
+#         best = reward
+#         model.save("trader_ppo2")
 
 model = model.load("trader_ppo2")
 rewards, actions, action_rewards = eval(model, test_data_input)
