@@ -223,9 +223,9 @@ def create_and_train_model(logger, dataloaders, name, n_episodes, hyperparameter
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=hp_lr)
 
-    #model = train_model(model, optimizer, criterion, n_episodes, logger, dataloaders, name, hyperparameters)
+    model = train_model(model, optimizer, criterion, n_episodes, logger, dataloaders, name, hyperparameters)
 
-    #torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
+    torch.save(model.state_dict(), f'checkpoint_deepcoin_{name}.pth')
 
     model.load_state_dict(torch.load(f'checkpoint_deepcoin_{name}.pth'))
 

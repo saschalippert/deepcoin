@@ -69,7 +69,7 @@ def create_dataloader_full(data, sequence_length, batch_size, train_percentage=0
     idx_eval = math.trunc(len(inputs) * train_percentage)
 
     dataset_train = TensorDataset(torch.from_numpy(inputs[:idx_eval]), torch.from_numpy(targets[:idx_eval]))
-    dataset_eval = TensorDataset(torch.from_numpy(inputs[idx_eval:-1]), torch.from_numpy(targets[idx_eval:-1]))
+    dataset_eval = TensorDataset(torch.from_numpy(inputs[idx_eval:]), torch.from_numpy(targets[idx_eval:]))
 
     dataloader_train = DataLoader(dataset_train, shuffle=shuffle, batch_size=batch_size, drop_last=False)
     dataloader_eval = DataLoader(dataset_eval, shuffle=shuffle, batch_size=len(dataset_eval), drop_last=False)
